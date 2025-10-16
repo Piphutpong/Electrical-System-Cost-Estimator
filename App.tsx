@@ -297,7 +297,7 @@ const App: React.FC = () => {
                                 <div className="flex justify-between items-center mb-4">
                                     <label htmlFor="profit-margin" className="font-semibold">กำไร (%):</label>
                                     <select id="profit-margin" value={profitMargin} onChange={e => setProfitMargin(Number(e.target.value))} className="p-2 border border-gray-300 rounded-md">
-                                        <option value="0">0%</option><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option><option value="25">25%</option>
+                                        <option value="0">0%</option><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option><option value="30">30%</option>
                                     </select>
                                 </div>
                                 <div className="space-y-1 text-sm">
