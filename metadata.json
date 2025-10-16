@@ -1,0 +1,5 @@
+{
+  "name": "Electrical System Cost Estimator",
+  "description": "An application to estimate the cost of expanding an electrical distribution system. Users can select equipment, specify quantities, manage the equipment list, and export a quotation.",
+  "requestFramePermissions": []
+}
