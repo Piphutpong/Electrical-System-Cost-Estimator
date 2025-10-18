@@ -10,6 +10,47 @@ declare global {
   }
 }
 
+// --- Sub Components ---
+// Moved outside the main App component to prevent re-definition on every render,
+// which fixes the input focus loss issue.
+
+const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: string }> = ({ label, ...props }) => (
+    <div>
+        <label className="block text-sm font-medium text-gray-700">{label}</label>
+        <input {...props} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" />
+    </div>
+);
+
+const EquipmentForm: React.FC<{
+    item: EquipmentItem | null, 
+    onSave: (data: Omit<EquipmentItem, 'id'> & { id?: string }) => void, 
+    onCancel: () => void
+}> = ({ item, onSave, onCancel }) => {
+    const [formData, setFormData] = useState({ name: item?.name || '', price: item?.price || 0, unit: item?.unit || '' });
+    const handleSubmit = (e: React.FormEvent) => { 
+        e.preventDefault(); 
+        onSave({ ...item, ...formData, price: Number(formData.price) }); 
+    };
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <Input label="ชื่ออุปกรณ์" value={formData.name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({...formData, name: e.target.value})} required />
+            <Input label="ราคา" type="number" value={formData.price} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({...formData, price: Number(e.target.value)})} required min="0" step="0.01" />
+            <Input label="หน่วย" value={formData.unit} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({...formData, unit: e.target.value})} required />
+            <div className="flex justify-end space-x-2 pt-4">
+                <button type="button" onClick={onCancel} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">ยกเลิก</button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">บันทึก</button>
+            </div>
+        </form>
+    )
+};
+
+const InfoInput: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: string }> = ({ label, ...props }) => (
+    <div>
+        <label className="block text-sm font-medium text-gray-700">{label}</label>
+        <input {...props} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" />
+    </div>
+);
+
 const LOCAL_STORAGE_KEY = 'electrical-estimator-projects-store';
 
 const App: React.FC = () => {
@@ -18,13 +59,13 @@ const App: React.FC = () => {
     const [quotation, setQuotation] = useState<Record<string, number>>({});
     const [profitMargin, setProfitMargin] = useState(0);
     const [companyInfo, setCompanyInfo] = useState({
-        name: 'บริษัท ตัวอย่างการไฟฟ้า จำกัด',
-        address: '123 ถนนสุขุมวิท กรุงเทพฯ 10110',
-        phone: '02-123-4567',
+        name: '',
+        address: '',
+        phone: '',
     });
     const [clientInfo, setClientInfo] = useState({
-        name: 'คุณ สมชาย ใจดี',
-        project: 'โครงการขยายเขตไฟฟ้า ซอย 1',
+        name: '',
+        project: '',
     });
 
     // Project management state
@@ -185,14 +226,19 @@ const App: React.FC = () => {
         if (!projectToDelete) return;
         const updatedProjects = projects.filter(p => p.id !== projectToDelete.id);
         setProjects(updatedProjects);
-        setProjectToDelete(null);
         
         if (currentProjectId === projectToDelete.id) {
-            handleNewBlankProject();
+            // Reset to blank slate
+            setEquipment(INITIAL_EQUIPMENT_ITEMS);
+            setQuotation({});
+            setProfitMargin(0);
+            setClientInfo({ name: '', project: '' });
+            setCurrentProjectId(null);
             saveProjectsToStore(updatedProjects, null);
         } else {
             saveProjectsToStore(updatedProjects, currentProjectId);
         }
+        setProjectToDelete(null);
     };
 
     const handleNewBlankProject = () => {
@@ -204,6 +250,7 @@ const App: React.FC = () => {
             // Keep company info
             setCurrentProjectId(null);
             setIsProjectManagerOpen(false);
+            saveProjectsToStore(projects, null);
         }
     };
 
@@ -346,25 +393,6 @@ const App: React.FC = () => {
         reader.readAsArrayBuffer(file);
     };
 
-    // --- Sub Components ---
-    const EquipmentForm: React.FC<{item: EquipmentItem | null, onSave: (data: any) => void, onCancel: () => void}> = ({ item, onSave, onCancel }) => {
-        const [formData, setFormData] = useState({ name: item?.name || '', price: item?.price || 0, unit: item?.unit || '' });
-        const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSave({ ...item, ...formData, price: Number(formData.price) }); };
-        return (
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <Input label="ชื่ออุปกรณ์" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required />
-                <Input label="ราคา" type="number" value={formData.price} onChange={e => setFormData({...formData, price: Number(e.target.value)})} required min="0" step="0.01" />
-                <Input label="หน่วย" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} required />
-                <div className="flex justify-end space-x-2 pt-4">
-                    <button type="button" onClick={onCancel} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">ยกเลิก</button>
-                    <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">บันทึก</button>
-                </div>
-            </form>
-        )
-    };
-    const InfoInput: React.FC<any> = ({ label, ...props }) => (<div><label className="block text-sm font-medium text-gray-700">{label}</label><input {...props} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" /></div>);
-    const Input: React.FC<any> = ({ label, ...props }) => (<div><label className="block text-sm font-medium text-gray-700">{label}</label><input {...props} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" /></div>);
-
     // --- Main Render ---
     return (
         <>
@@ -391,8 +419,17 @@ const App: React.FC = () => {
                      <div className="bg-white p-6 rounded-lg shadow-md">
                         <h2 className="text-xl font-semibold mb-4 border-b pb-2">ข้อมูลโปรเจคและลูกค้า</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-3"><h3 className="font-semibold text-gray-600">ข้อมูลบริษัท (ผู้เสนอราคา)</h3><InfoInput label="ชื่อบริษัท" value={companyInfo.name} onChange={(e: any) => setCompanyInfo(c => ({...c, name: e.target.value}))} /><InfoInput label="ที่อยู่" value={companyInfo.address} onChange={(e: any) => setCompanyInfo(c => ({...c, address: e.target.value}))} /><InfoInput label="เบอร์โทร" value={companyInfo.phone} onChange={(e: any) => setCompanyInfo(c => ({...c, phone: e.target.value}))} /></div>
-                            <div className="space-y-3"><h3 className="font-semibold text-gray-600">ข้อมูลลูกค้า</h3><InfoInput label="ชื่อลูกค้า / บริษัท" value={clientInfo.name} onChange={(e: any) => setClientInfo(c => ({...c, name: e.target.value}))} /><InfoInput label="ชื่อโครงการ" value={clientInfo.project} onChange={(e: any) => setClientInfo(c => ({...c, project: e.target.value}))} /></div>
+                            <div className="space-y-3">
+                                <h3 className="font-semibold text-gray-600">ข้อมูลบริษัท (ผู้เสนอราคา)</h3>
+                                <InfoInput label="ชื่อบริษัท" placeholder="เช่น บริษัท การไฟฟ้าไทย จำกัด" value={companyInfo.name} onChange={(e: any) => setCompanyInfo(c => ({...c, name: e.target.value}))} />
+                                <InfoInput label="ที่อยู่" placeholder="123 ถ.สุขุมวิท กรุงเทพฯ" value={companyInfo.address} onChange={(e: any) => setCompanyInfo(c => ({...c, address: e.target.value}))} />
+                                <InfoInput label="เบอร์โทร" placeholder="02-123-4567" value={companyInfo.phone} onChange={(e: any) => setCompanyInfo(c => ({...c, phone: e.target.value}))} />
+                            </div>
+                            <div className="space-y-3">
+                                <h3 className="font-semibold text-gray-600">ข้อมูลลูกค้า</h3>
+                                <InfoInput label="ชื่อลูกค้า / บริษัท" placeholder="เช่น คุณ สมชาย ใจดี" value={clientInfo.name} onChange={(e: any) => setClientInfo(c => ({...c, name: e.target.value}))} />
+                                <InfoInput label="ชื่อโครงการ" placeholder="เช่น โครงการขยายเขต ซอย 1" value={clientInfo.project} onChange={(e: any) => setClientInfo(c => ({...c, project: e.target.value}))} />
+                            </div>
                         </div>
                     </div>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
