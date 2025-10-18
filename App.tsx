@@ -1,13 +1,14 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { EquipmentItem, QuotationItem } from './types';
 import { INITIAL_EQUIPMENT_ITEMS } from './constants';
-import { PlusIcon, TrashIcon, PencilIcon, PrinterIcon, SaveIcon, FolderOpenIcon, DocumentArrowDownIcon } from './components/icons';
+import { PlusIcon, TrashIcon, PencilIcon, PrinterIcon, SaveIcon, FolderOpenIcon, DocumentArrowDownIcon, ArrowUpTrayIcon } from './components/icons';
 import Modal from './components/Modal';
 
 declare global {
   interface Window {
     jspdf: any;
     html2canvas: any;
+    XLSX: any;
   }
 }
 
@@ -16,6 +17,7 @@ const App: React.FC = () => {
     const [quotation, setQuotation] = useState<Record<string, number>>({});
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<EquipmentItem | null>(null);
+    const [itemToDelete, setItemToDelete] = useState<EquipmentItem | null>(null);
     const [profitMargin, setProfitMargin] = useState(15);
     const [companyInfo, setCompanyInfo] = useState({
         name: 'บริษัท ตัวอย่างการไฟฟ้า จำกัด',
@@ -26,6 +28,7 @@ const App: React.FC = () => {
         name: 'คุณ สมชาย ใจดี',
         project: 'โครงการขยายเขตไฟฟ้า ซอย 1',
     });
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         try {
@@ -110,15 +113,15 @@ const App: React.FC = () => {
         closeModal();
     };
 
-    const handleDeleteItem = (itemId: string) => {
-        if (window.confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการนี้?')) {
-            setEquipment(prev => prev.filter(item => item.id !== itemId));
-            setQuotation(prev => {
-                const newQuotation = {...prev};
-                delete newQuotation[itemId];
-                return newQuotation;
-            });
-        }
+    const handleConfirmDelete = () => {
+        if (!itemToDelete) return;
+        setEquipment(prev => prev.filter(item => item.id !== itemToDelete.id));
+        setQuotation(prev => {
+            const newQuotation = {...prev};
+            delete newQuotation[itemToDelete.id];
+            return newQuotation;
+        });
+        setItemToDelete(null);
     };
     
     const handleSaveProject = () => {
@@ -181,7 +184,81 @@ const App: React.FC = () => {
             });
         }
     };
-    
+
+    const handleExcelImportClick = () => {
+        fileInputRef.current?.click();
+    };
+
+    const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = new Uint8Array(e.target?.result as ArrayBuffer);
+                const workbook = window.XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const json: any[] = window.XLSX.utils.sheet_to_json(worksheet);
+
+                let updatedCount = 0;
+                let addedCount = 0;
+                let skippedCount = 0;
+
+                const equipmentMap = new Map<string, EquipmentItem>(equipment.map(item => [item.name.toLowerCase().trim(), item]));
+
+                json.forEach(row => {
+                    const name = row.name || row.Name;
+                    const price = row.price || row.Price;
+                    const unit = row.unit || row.Unit;
+
+                    if (typeof name === 'string' && name.trim() !== '' && typeof price === 'number' && price >= 0) {
+                        const trimmedName = name.trim();
+                        const lowerCaseName = trimmedName.toLowerCase();
+                        const existingItem = equipmentMap.get(lowerCaseName);
+                        
+                        if (existingItem) {
+                            existingItem.price = price;
+                             if (typeof unit === 'string' && unit.trim() !== '') {
+                                existingItem.unit = unit.trim();
+                            }
+                            equipmentMap.set(lowerCaseName, existingItem);
+                            updatedCount++;
+                        } else {
+                            if (typeof unit === 'string' && unit.trim() !== '') {
+                                const newItem: EquipmentItem = {
+                                    id: crypto.randomUUID(),
+                                    name: trimmedName,
+                                    price: price,
+                                    unit: unit.trim(),
+                                };
+                                equipmentMap.set(lowerCaseName, newItem);
+                                addedCount++;
+                            } else {
+                                skippedCount++;
+                            }
+                        }
+                    } else {
+                        skippedCount++;
+                    }
+                });
+
+                setEquipment(Array.from(equipmentMap.values()));
+                alert(`นำเข้าสำเร็จ:\n- เพิ่มใหม่ ${addedCount} รายการ\n- อัปเดตราคา ${updatedCount} รายการ\n- ข้าม ${skippedCount} รายการ (ข้อมูลไม่ครบ)`);
+
+            } catch (error) {
+                console.error("Error processing Excel file:", error);
+                alert("เกิดข้อผิดพลาดในการประมวลผลไฟล์ Excel โปรดตรวจสอบว่าไฟล์มีรูปแบบที่ถูกต้อง (คอลัมน์ name, price, unit)");
+            } finally {
+                if(fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                }
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
     const EquipmentForm: React.FC<{item: EquipmentItem | null, onSave: (data: any) => void, onCancel: () => void}> = ({ item, onSave, onCancel }) => {
         const [formData, setFormData] = useState({
             name: item?.name || '', price: item?.price || 0, unit: item?.unit || '',
@@ -229,8 +306,10 @@ const App: React.FC = () => {
                             <div className="flex items-center space-x-1 md:space-x-2">
                                <button onClick={handleSaveProject} title="บันทึกโปรเจค" className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"><SaveIcon className="h-5 w-5"/><span className="hidden md:inline">บันทึก</span></button>
                                <button onClick={handleLoadProject} title="โหลดโปรเจค" className="flex items-center gap-2 px-3 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"><FolderOpenIcon className="h-5 w-5"/><span className="hidden md:inline">โหลด</span></button>
+                               <button onClick={handleExcelImportClick} title="นำเข้าราคาจาก Excel" className="flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"><ArrowUpTrayIcon className="h-5 w-5"/><span className="hidden md:inline">นำเข้า Excel</span></button>
                                <button onClick={handleExportPDF} title="Export PDF" className="flex items-center gap-2 px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"><DocumentArrowDownIcon className="h-5 w-5"/><span className="hidden md:inline">PDF</span></button>
                                <button onClick={handlePrint} title="พิมพ์ใบเสนอราคา" className="flex items-center gap-2 px-3 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition-colors"><PrinterIcon className="h-5 w-5"/><span className="hidden md:inline">พิมพ์</span></button>
+                               <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx, .xls" className="hidden" />
                             </div>
                         </div>
                     </div>
@@ -256,26 +335,27 @@ const App: React.FC = () => {
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow-md">
-                            <div className="flex justify-between items-center mb-4 border-b pb-2">
+                            <div className="flex justify-between items-center mb-2 border-b pb-2">
                                 <h2 className="text-xl font-semibold">เลือกรายการอุปกรณ์</h2>
                                 <button onClick={openModalForAdd} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm">
                                     <PlusIcon className="h-5 w-5"/>
                                     <span>เพิ่มอุปกรณ์</span>
                                 </button>
                             </div>
-                            <div className="space-y-3 max-h-[calc(100vh-450px)] overflow-y-auto pr-2">
-                                {equipment.map(item => (
-                                    <div key={item.id} className="grid grid-cols-12 gap-2 items-center border p-3 rounded-lg hover:bg-gray-50">
-                                        <div className="col-span-12 sm:col-span-6">
+                             <p className="text-xs text-gray-500 mb-4">
+                                <strong>Tip:</strong> หากต้องการอัปเดตราคาและเพิ่มอุปกรณ์ใหม่ ให้ใช้ปุ่ม "นำเข้า Excel". ไฟล์ Excel ต้องมีคอลัมน์ `name`, `price` และ `unit`
+                            </p>
+                            <div className="space-y-3 max-h-[calc(100vh-480px)] overflow-y-auto pr-2">
+                                {equipment.sort((a, b) => a.name.localeCompare(b.name)).map(item => (
+                                    <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 border p-3 rounded-lg hover:bg-gray-50">
+                                        <div className="flex-1 min-w-[250px]">
                                             <p className="font-medium">{item.name}</p>
                                             <p className="text-sm text-gray-500">{formatCurrency(item.price)} / {item.unit}</p>
                                         </div>
-                                        <div className="col-span-6 sm:col-span-3">
-                                            <input type="number" placeholder="จำนวน" min="0" value={quotation[item.id] || ''} onChange={(e) => handleQuantityChange(item.id, e.target.value)} className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" />
-                                        </div>
-                                        <div className="col-span-6 sm:col-span-3 flex justify-end space-x-1">
-                                            <button onClick={() => openModalForEdit(item)} className="p-2 text-yellow-600 hover:text-yellow-800 hover:bg-yellow-100 rounded-full transition-colors"><PencilIcon className="h-5 w-5"/></button>
-                                            <button onClick={() => handleDeleteItem(item.id)} className="p-2 text-red-600 hover:text-red-800 hover:bg-red-100 rounded-full transition-colors"><TrashIcon className="h-5 w-5"/></button>
+                                        <div className="flex items-center gap-1 sm:gap-2">
+                                            <input type="number" placeholder="จำนวน" min="0" value={quotation[item.id] || ''} onChange={(e) => handleQuantityChange(item.id, e.target.value)} className="w-24 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" />
+                                            <button onClick={() => openModalForEdit(item)} title="แก้ไขอุปกรณ์" className="p-2 text-yellow-600 hover:text-yellow-800 hover:bg-yellow-100 rounded-full transition-colors"><PencilIcon className="h-5 w-5"/></button>
+                                            <button onClick={() => setItemToDelete(item)} title="ลบอุปกรณ์นี้" className="p-2 text-red-600 hover:text-red-800 hover:bg-red-100 rounded-full transition-colors"><TrashIcon className="h-5 w-5"/></button>
                                         </div>
                                     </div>
                                 ))}
@@ -387,6 +467,20 @@ const App: React.FC = () => {
 
             <Modal isOpen={isModalOpen} onClose={closeModal} title={editingItem ? 'แก้ไขรายการอุปกรณ์' : 'เพิ่มรายการอุปกรณ์ใหม่'}>
                 <EquipmentForm item={editingItem} onSave={handleSaveItem} onCancel={closeModal} />
+            </Modal>
+
+            <Modal isOpen={!!itemToDelete} onClose={() => setItemToDelete(null)} title="ยืนยันการลบ">
+                <div>
+                    <p className="text-gray-700 mb-4">คุณแน่ใจหรือไม่ว่าต้องการลบรายการ: <br/><strong className="font-semibold">{itemToDelete?.name}</strong>?</p>
+                    <div className="flex justify-end space-x-2">
+                        <button type="button" onClick={() => setItemToDelete(null)} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">
+                            ยกเลิก
+                        </button>
+                        <button type="button" onClick={handleConfirmDelete} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                            ยืนยันการลบ
+                        </button>
+                    </div>
+                </div>
             </Modal>
         </>
     );
