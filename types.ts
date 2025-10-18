@@ -1,4 +1,3 @@
-
 export interface EquipmentItem {
   id: string;
   name: string;
@@ -9,4 +8,19 @@ export interface EquipmentItem {
 export interface QuotationItem {
   item: EquipmentItem;
   quantity: number;
+}
+
+export interface ProjectData {
+  equipment: EquipmentItem[];
+  quotation: Record<string, number>;
+  profitMargin: number;
+  companyInfo: { name: string; address: string; phone: string; };
+  clientInfo: { name: string; project: string; };
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  lastModified: string;
+  data: ProjectData;
 }
