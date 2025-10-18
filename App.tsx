@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { EquipmentItem, QuotationItem, Project, ProjectData } from './types';
 import { INITIAL_EQUIPMENT_ITEMS, DEPARTMENTS } from './constants';
-import { PlusIcon, TrashIcon, PencilIcon, SaveIcon, FolderOpenIcon, ArrowUpTrayIcon, ArrowPathIcon, DocumentArrowDownIcon } from './components/icons';
+import { PlusIcon, TrashIcon, PencilIcon, SaveIcon, FolderOpenIcon, ArrowUpTrayIcon, ArrowPathIcon, DocumentArrowDownIcon, ChevronUpIcon, ChevronDownIcon } from './components/icons';
 import Modal from './components/Modal';
 
 declare global {
@@ -99,6 +99,7 @@ const App: React.FC = () => {
     const [selectedItemId, setSelectedItemId] = useState<string>('');
     const [currentQuantity, setCurrentQuantity] = useState<string>('1');
     const [isEquipmentManagerOpen, setIsEquipmentManagerOpen] = useState(false);
+    const [collapsedDepartments, setCollapsedDepartments] = useState<Set<string>>(new Set());
     
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -286,6 +287,18 @@ const App: React.FC = () => {
         }
     };
 
+    const toggleDepartmentCollapse = (departmentName: string) => {
+        setCollapsedDepartments(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(departmentName)) {
+                newSet.delete(departmentName);
+            } else {
+                newSet.add(departmentName);
+            }
+            return newSet;
+        });
+    };
+
 
     // --- Quotation Item Management ---
     const handleUpdateQuotationQuantity = (itemId: string, quantity: string) => {
@@ -454,6 +467,8 @@ const App: React.FC = () => {
         departmentsInView.forEach(dep => {
             ws_data.push([dep]);
             const itemsInDep = quotationItems.filter(qi => qi.item.department === dep);
+            const departmentSubtotal = itemsInDep.reduce((total, { item, quantity }) => total + (item.price * quantity), 0);
+            
             itemsInDep.forEach(({ item, quantity }) => {
                 ws_data.push([
                     itemNumber++,
@@ -464,7 +479,13 @@ const App: React.FC = () => {
                     item.price * quantity
                 ]);
             });
+            ws_data.push([null, null, null, null, `รวมยอด ${dep}`, departmentSubtotal]);
+            ws_data.push([]); // Spacer
         });
+        
+        if (ws_data.length > 0 && ws_data[ws_data.length - 1].length === 0) {
+            ws_data.pop(); // Remove last spacer row for tighter layout
+        }
 
         ws_data.push([]);
         ws_data.push([null, null, null, null, 'ราคาทุน', subTotal]);
@@ -484,7 +505,7 @@ const App: React.FC = () => {
         departmentsInView.forEach(dep => {
             merges.push({ s: { r: rowIndex, c: 0 }, e: { r: rowIndex, c: 5 } });
             const itemsInDep = quotationItems.filter(qi => qi.item.department === dep);
-            rowIndex += itemsInDep.length + 1;
+            rowIndex += itemsInDep.length + 3; // +1 header, +1 subtotal, +1 spacer
         });
         ws['!merges'] = merges;
 
@@ -492,6 +513,54 @@ const App: React.FC = () => {
 
         const today = new Date().toISOString().slice(0, 10);
         const fileName = `ใบเสนอราคา-${currentProjectName.replace(/[\s()]/g, '_')}-${today}.xlsx`;
+        window.XLSX.writeFile(wb, fileName);
+    };
+
+    const handleExportEquipmentListToExcel = () => {
+        if (equipment.length === 0) {
+            alert("ไม่มีรายการอุปกรณ์สำหรับ Export");
+            return;
+        }
+
+        const wb = window.XLSX.utils.book_new();
+        
+        // Sort equipment by department then by name for a clean list
+        const sortedEquipment = [...equipment].sort((a, b) => {
+            // Find index in DEPARTMENTS array to sort by it
+            const depAIndex = DEPARTMENTS.indexOf(a.department);
+            const depBIndex = DEPARTMENTS.indexOf(b.department);
+
+            if (depAIndex > -1 && depBIndex > -1) { // Both are standard departments
+                if (depAIndex < depBIndex) return -1;
+                if (depAIndex > depBIndex) return 1;
+            } else if (depAIndex > -1) { // A is standard, B is not
+                return -1;
+            } else if (depBIndex > -1) { // B is standard, A is not
+                return 1;
+            } else { // Neither are standard, sort alphabetically
+                const depCompare = a.department.localeCompare(b.department);
+                if (depCompare !== 0) return depCompare;
+            }
+            
+            return a.name.localeCompare(b.name);
+        });
+        
+        const ws_data = sortedEquipment.map(item => ({
+            'name': item.name,
+            'price': item.price,
+            'unit': item.unit,
+            'department': item.department
+        }));
+
+        const ws = window.XLSX.utils.json_to_sheet(ws_data, { header: ["name", "price", "unit", "department"] });
+
+        // Set column widths
+        ws['!cols'] = [ { wch: 50 }, { wch: 15 }, { wch: 10 }, { wch: 25 } ];
+
+        window.XLSX.utils.book_append_sheet(wb, ws, "รายการอุปกรณ์");
+
+        const today = new Date().toISOString().slice(0, 10);
+        const fileName = `รายการอุปกรณ์ทั้งหมด-${today}.xlsx`;
         window.XLSX.writeFile(wb, fileName);
     };
 
@@ -558,12 +627,24 @@ const App: React.FC = () => {
                                 {quotationItems.length > 0 ? (
                                     departmentsInView.map(dep => {
                                         const itemsInDep = quotationItems.filter(qi => qi.item.department === dep);
+                                        const departmentSubtotal = itemsInDep.reduce((total, { item, quantity }) => total + (item.price * quantity), 0);
+                                        const isCollapsed = collapsedDepartments.has(dep);
                                         return (
                                             <React.Fragment key={dep}>
-                                                <tr className="bg-slate-100 border-b border-slate-300">
-                                                    <td colSpan={5} className="p-2 font-semibold text-slate-700 text-base">{dep}</td>
+                                                <tr 
+                                                    className="bg-slate-100 border-b border-slate-300 cursor-pointer hover:bg-slate-200 transition-colors"
+                                                    onClick={() => toggleDepartmentCollapse(dep)}
+                                                >
+                                                    <td colSpan={5} className="p-2 font-semibold text-slate-700 text-base">
+                                                        <div className="flex justify-between items-center">
+                                                            <span>{dep}</span>
+                                                            <span className="transition-transform duration-200 ease-in-out">
+                                                                {isCollapsed ? <ChevronDownIcon className="h-5 w-5"/> : <ChevronUpIcon className="h-5 w-5"/>}
+                                                            </span>
+                                                        </div>
+                                                    </td>
                                                 </tr>
-                                                {itemsInDep.map(({ item, quantity }) => (
+                                                {!isCollapsed && itemsInDep.map(({ item, quantity }) => (
                                                     <tr key={item.id} className="border-b hover:bg-gray-50">
                                                         <td className="p-2 font-medium pl-6">{item.name}</td>
                                                         <td className="p-2">
@@ -581,6 +662,11 @@ const App: React.FC = () => {
                                                         </td>
                                                     </tr>
                                                 ))}
+                                                <tr className="bg-slate-50 border-b-2 border-slate-300">
+                                                    <td colSpan={3} className="p-2 text-right font-semibold text-slate-600">รวมยอด {dep}</td>
+                                                    <td className="p-2 text-right font-mono font-bold text-slate-800">{formatCurrency(departmentSubtotal)}</td>
+                                                    <td></td>
+                                                </tr>
                                             </React.Fragment>
                                         );
                                     })
@@ -636,7 +722,8 @@ const App: React.FC = () => {
                                 <div className="flex flex-col space-y-2">
                                     <button onClick={openModalForAdd} className="flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm"><PlusIcon className="h-5 w-5"/><span>เพิ่มอุปกรณ์ใหม่</span></button>
                                     <button onClick={() => setIsEquipmentManagerOpen(true)} className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors text-sm"><PencilIcon className="h-5 w-5"/><span>แก้ไขรายการทั้งหมด</span></button>
-                                     <button onClick={handleRestoreDefaults} className="flex items-center justify-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors text-sm"><ArrowPathIcon className="h-5 w-5"/><span>คืนค่าเริ่มต้น</span></button>
+                                    <button onClick={handleExportEquipmentListToExcel} className="flex items-center justify-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition-colors text-sm"><DocumentArrowDownIcon className="h-5 w-5"/><span>Export รายการอุปกรณ์</span></button>
+                                    <button onClick={handleRestoreDefaults} className="flex items-center justify-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors text-sm"><ArrowPathIcon className="h-5 w-5"/><span>คืนค่าเริ่มต้น</span></button>
                                 </div>
                             </div>
                         </div>
