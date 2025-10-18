@@ -14,7 +14,8 @@ export interface QuotationItem {
 export interface ProjectData {
   equipment: EquipmentItem[];
   quotation: Record<string, number>;
-  profitMargin: number;
+  profitMargin?: number; // Kept for backward compatibility
+  profitMargins: Record<string, number>;
   companyInfo: { name: string; address: string; phone: string; };
   clientInfo: { name: string; project: string; };
 }

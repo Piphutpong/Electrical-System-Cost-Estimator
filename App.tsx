@@ -99,7 +99,7 @@ const App: React.FC = () => {
     // Core data state
     const [equipment, setEquipment] = useState<EquipmentItem[]>(sortEquipmentList(INITIAL_EQUIPMENT_ITEMS));
     const [quotation, setQuotation] = useState<Record<string, number>>({});
-    const [profitMargin, setProfitMargin] = useState(0);
+    const [profitMargins, setProfitMargins] = useState<Record<string, number>>({});
     const [companyInfo, setCompanyInfo] = useState({
         name: '',
         address: '',
@@ -126,6 +126,7 @@ const App: React.FC = () => {
     const [currentQuantity, setCurrentQuantity] = useState<string>('1');
     const [isEquipmentManagerOpen, setIsEquipmentManagerOpen] = useState(false);
     const [collapsedDepartments, setCollapsedDepartments] = useState<Set<string>>(new Set());
+    const [globalProfitInput, setGlobalProfitInput] = useState('');
     
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -191,7 +192,26 @@ const App: React.FC = () => {
     }, [quotationItems]);
 
     const subTotal = useMemo(() => quotationItems.reduce((total, { item, quantity }) => total + item.price * quantity, 0), [quotationItems]);
-    const profitAmount = useMemo(() => subTotal * (profitMargin / 100), [subTotal, profitMargin]);
+    
+    const departmentSubtotals = useMemo(() => {
+        const subtotals: Record<string, number> = {};
+        quotationItems.forEach(({ item, quantity }) => {
+            if (!subtotals[item.department]) {
+                subtotals[item.department] = 0;
+            }
+            subtotals[item.department] += item.price * quantity;
+        });
+        return subtotals;
+    }, [quotationItems]);
+
+    const profitAmount = useMemo(() => {
+        return Object.entries(departmentSubtotals).reduce((totalProfit, [department, departmentSubtotal]) => {
+            const margin = profitMargins[department] || 0;
+            const departmentProfit = departmentSubtotal * (margin / 100);
+            return totalProfit + departmentProfit;
+        }, 0);
+    }, [departmentSubtotals, profitMargins]);
+    
     const totalBeforeVat = useMemo(() => subTotal + profitAmount, [subTotal, profitAmount]);
     const vatAmount = useMemo(() => totalBeforeVat * 0.07, [totalBeforeVat]);
     const grandTotal = useMemo(() => totalBeforeVat + vatAmount, [totalBeforeVat, vatAmount]);
@@ -208,7 +228,7 @@ const App: React.FC = () => {
     };
 
     const getCurrentProjectData = (): ProjectData => ({
-        equipment, quotation, profitMargin, companyInfo, clientInfo
+        equipment, quotation, profitMargins, companyInfo, clientInfo
     });
     
     const loadProjectData = (data: ProjectData) => {
@@ -218,7 +238,20 @@ const App: React.FC = () => {
         }));
         setEquipment(sortEquipmentList(migratedEquipment));
         setQuotation(data.quotation || {});
-        setProfitMargin(data.profitMargin || 0);
+        
+        if (data.profitMargins) {
+            setProfitMargins(data.profitMargins);
+        } else if (typeof data.profitMargin === 'number') {
+            // Backward compatibility for old projects with single profit margin
+            const newProfitMargins: Record<string, number> = {};
+            DEPARTMENTS.forEach(dep => {
+                newProfitMargins[dep] = data.profitMargin as number;
+            });
+            setProfitMargins(newProfitMargins);
+        } else {
+            setProfitMargins({});
+        }
+
         setCompanyInfo(data.companyInfo || { name: '', address: '', phone: '' });
         setClientInfo(data.clientInfo || { name: '', project: '' });
     };
@@ -294,7 +327,7 @@ const App: React.FC = () => {
             // Reset to blank slate
             setEquipment(INITIAL_EQUIPMENT_ITEMS);
             setQuotation({});
-            setProfitMargin(0);
+            setProfitMargins({});
             setClientInfo({ name: '', project: '' });
             setCurrentProjectId(null);
             saveProjectsToStore(updatedProjects, null);
@@ -308,7 +341,7 @@ const App: React.FC = () => {
         if(window.confirm("คุณต้องการเริ่มโปรเจคใหม่ทั้งหมดหรือไม่? การเปลี่ยนแปลงที่ยังไม่ได้บันทึกจะหายไป")) {
             setEquipment(INITIAL_EQUIPMENT_ITEMS);
             setQuotation({});
-            setProfitMargin(0);
+            setProfitMargins({});
             setClientInfo({ name: '', project: '' });
             // Keep company info
             setCurrentProjectId(null);
@@ -373,6 +406,31 @@ const App: React.FC = () => {
             return newQuotation;
         });
     };
+
+    // --- Profit Margin Handlers ---
+    const handleProfitMarginChange = (department: string, value: string) => {
+        const numValue = Number(value);
+        setProfitMargins(prev => ({
+            ...prev,
+            [department]: isNaN(numValue) ? 0 : numValue,
+        }));
+    };
+
+    const handleApplyGlobalProfit = () => {
+        const numValue = Number(globalProfitInput);
+        if (isNaN(numValue) || numValue < 0) {
+            setGlobalProfitInput('');
+            return;
+        };
+
+        const newMargins = { ...profitMargins };
+        departmentsInView.forEach(dep => {
+            newMargins[dep] = numValue;
+        });
+        setProfitMargins(newMargins);
+        setGlobalProfitInput(''); // Clear input after applying
+    };
+
 
     // --- Equipment CRUD ---
     const openModalForEdit = (item: EquipmentItem) => {
@@ -519,7 +577,7 @@ const App: React.FC = () => {
 
         ws_data.push([]);
         ws_data.push([null, null, null, null, 'ราคาทุน', subTotal]);
-        ws_data.push([null, null, null, null, `กำไร (${profitMargin}%)`, profitAmount]);
+        ws_data.push([null, null, null, null, `กำไรรวม`, profitAmount]);
         ws_data.push([null, null, null, null, 'รวมก่อน VAT', totalBeforeVat]);
         ws_data.push([null, null, null, null, 'VAT (7%)', vatAmount]);
         ws_data.push([null, null, null, null, 'ยอดรวมสุทธิ', grandTotal]);
@@ -687,16 +745,52 @@ const App: React.FC = () => {
                             
                             <div className="mt-6 flex justify-end">
                                 <div className="w-full max-w-md space-y-4">
-                                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                                        <label htmlFor="profit-margin" className="font-semibold text-gray-800">กำไร (%):</label>
-                                        <input 
-                                            id="profit-margin" 
-                                            type="number" 
-                                            min="0" 
-                                            value={profitMargin} 
-                                            onChange={e => setProfitMargin(Number(e.target.value))} 
-                                            className="w-28 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-right font-mono"
-                                        />
+                                    <div className="p-3 bg-gray-50 rounded-lg">
+                                        <h3 className="font-semibold text-gray-800 mb-3">กำไร (%)</h3>
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center gap-2 pb-2 border-b">
+                                                <label htmlFor="global-profit-input" className="text-sm font-medium whitespace-nowrap">
+                                                    กำหนดกำไรทุกแผนก:
+                                                </label>
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        id="global-profit-input"
+                                                        type="number"
+                                                        value={globalProfitInput}
+                                                        onChange={(e) => setGlobalProfitInput(e.target.value)}
+                                                        placeholder="%"
+                                                        className="w-20 p-1 border rounded-md text-right"
+                                                    />
+                                                    <button
+                                                        onClick={handleApplyGlobalProfit}
+                                                        className="px-3 py-1 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 text-xs"
+                                                    >
+                                                        ใช้
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {departmentsInView.length > 0 ? (
+                                                departmentsInView.map(dep => (
+                                                    <div key={dep} className="flex justify-between items-center gap-2">
+                                                        <label htmlFor={`profit-${dep}`} className="text-sm text-gray-600 truncate pr-2" title={dep}>
+                                                            {dep}:
+                                                        </label>
+                                                        <input
+                                                            id={`profit-${dep}`}
+                                                            type="number"
+                                                            min="0"
+                                                            value={profitMargins[dep] || ''}
+                                                            onChange={(e) => handleProfitMarginChange(dep, e.target.value)}
+                                                            placeholder="0"
+                                                            className="w-28 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-right font-mono"
+                                                        />
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <p className="text-sm text-center text-gray-500 py-2">เพิ่มรายการเพื่อกำหนดกำไร</p>
+                                            )}
+                                        </div>
                                     </div>
                                     <div className="border-t border-gray-200 pt-4 space-y-2">
                                         <div className="flex justify-between text-gray-600">
@@ -704,7 +798,7 @@ const App: React.FC = () => {
                                             <span className="font-mono">{formatCurrency(subTotal)}</span>
                                         </div>
                                         <div className="flex justify-between text-gray-600">
-                                            <span>กำไร ({profitMargin}%)</span>
+                                            <span>กำไรรวม</span>
                                             <span className="font-mono">{formatCurrency(profitAmount)}</span>
                                         </div>
                                         <div className="flex justify-between font-semibold text-gray-800 pt-1">
