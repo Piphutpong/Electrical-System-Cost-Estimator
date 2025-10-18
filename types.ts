@@ -3,6 +3,7 @@ export interface EquipmentItem {
   name: string;
   price: number;
   unit: string;
+  department: string;
 }
 
 export interface QuotationItem {

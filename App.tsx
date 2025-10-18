@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { EquipmentItem, QuotationItem, Project, ProjectData } from './types';
-import { INITIAL_EQUIPMENT_ITEMS } from './constants';
-import { PlusIcon, TrashIcon, PencilIcon, SaveIcon, FolderOpenIcon, ArrowUpTrayIcon, ArrowPathIcon } from './components/icons';
+import { INITIAL_EQUIPMENT_ITEMS, DEPARTMENTS } from './constants';
+import { PlusIcon, TrashIcon, PencilIcon, SaveIcon, FolderOpenIcon, ArrowUpTrayIcon, ArrowPathIcon, DocumentArrowDownIcon } from './components/icons';
 import Modal from './components/Modal';
 
 declare global {
@@ -26,9 +26,18 @@ const EquipmentForm: React.FC<{
     onSave: (data: Omit<EquipmentItem, 'id'> & { id?: string }) => void, 
     onCancel: () => void
 }> = ({ item, onSave, onCancel }) => {
-    const [formData, setFormData] = useState({ name: item?.name || '', price: item?.price || 0, unit: item?.unit || '' });
+    const [formData, setFormData] = useState({ 
+        name: item?.name || '', 
+        price: item?.price || 0, 
+        unit: item?.unit || '',
+        department: item?.department || ''
+    });
     const handleSubmit = (e: React.FormEvent) => { 
         e.preventDefault(); 
+         if (!formData.department) {
+            alert('กรุณาเลือกแผนก');
+            return;
+        }
         onSave({ ...item, ...formData, price: Number(formData.price) }); 
     };
     return (
@@ -36,6 +45,20 @@ const EquipmentForm: React.FC<{
             <Input label="ชื่ออุปกรณ์" value={formData.name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({...formData, name: e.target.value})} required />
             <Input label="ราคา" type="number" value={formData.price} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({...formData, price: Number(e.target.value)})} required min="0" step="0.01" />
             <Input label="หน่วย" value={formData.unit} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({...formData, unit: e.target.value})} required />
+            <div>
+                <label className="block text-sm font-medium text-gray-700">แผนก</label>
+                <select
+                    value={formData.department}
+                    onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                    required
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2"
+                >
+                    <option value="" disabled>--- กรุณาเลือกแผนก ---</option>
+                    {DEPARTMENTS.map((dep) => (
+                        <option key={dep} value={dep}>{dep}</option>
+                    ))}
+                </select>
+            </div>
             <div className="flex justify-end space-x-2 pt-4">
                 <button type="button" onClick={onCancel} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">ยกเลิก</button>
                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">บันทึก</button>
@@ -72,6 +95,7 @@ const App: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<EquipmentItem | null>(null);
     const [itemToDelete, setItemToDelete] = useState<EquipmentItem | null>(null);
+    const [selectedDepartment, setSelectedDepartment] = useState<string>('');
     const [selectedItemId, setSelectedItemId] = useState<string>('');
     const [currentQuantity, setCurrentQuantity] = useState<string>('1');
     const [isEquipmentManagerOpen, setIsEquipmentManagerOpen] = useState(false);
@@ -103,6 +127,10 @@ const App: React.FC = () => {
         return projects.find(p => p.id === currentProjectId)?.name || "(ไม่พบชื่อโปรเจค)";
     }, [currentProjectId, projects]);
 
+    const filteredEquipment = useMemo(() => {
+        if (!selectedDepartment) return [];
+        return equipment.filter(item => item.department === selectedDepartment);
+    }, [selectedDepartment, equipment]);
 
     // --- Data Calculation ---
     const formatCurrency = (amount: number) => {
@@ -123,6 +151,13 @@ const App: React.FC = () => {
             .filter((item): item is QuotationItem => item !== null)
             .sort((a, b) => a.item.name.localeCompare(b.item.name));
     }, [quotation, equipment]);
+    
+    const departmentsInView = useMemo(() => {
+        const presentDepartments = new Set(quotationItems.map(qi => qi.item.department));
+        const standardOrder = DEPARTMENTS.filter(d => presentDepartments.has(d));
+        const customDepartments = Array.from(presentDepartments).filter(d => !DEPARTMENTS.includes(d)).sort();
+        return [...standardOrder, ...customDepartments];
+    }, [quotationItems]);
 
     const subTotal = useMemo(() => quotationItems.reduce((total, { item, quantity }) => total + item.price * quantity, 0), [quotationItems]);
     const profitAmount = useMemo(() => subTotal * (profitMargin / 100), [subTotal, profitMargin]);
@@ -146,7 +181,11 @@ const App: React.FC = () => {
     });
     
     const loadProjectData = (data: ProjectData) => {
-        setEquipment(data.equipment || INITIAL_EQUIPMENT_ITEMS);
+        const migratedEquipment = (data.equipment || INITIAL_EQUIPMENT_ITEMS).map(e => ({
+            ...e,
+            department: e.department || DEPARTMENTS[2] // Default to 'แผนกแรงต่ำ' if missing
+        }));
+        setEquipment(migratedEquipment);
         setQuotation(data.quotation || {});
         setProfitMargin(data.profitMargin || 0);
         setCompanyInfo(data.companyInfo || { name: '', address: '', phone: '' });
@@ -311,9 +350,9 @@ const App: React.FC = () => {
 
     const handleSaveItem = (itemData: Omit<EquipmentItem, 'id'> & { id?: string }) => {
         if (itemData.id) { // Editing
-            setEquipment(prev => prev.map(item => item.id === itemData.id ? { ...item, ...itemData } : item));
+            setEquipment(prev => prev.map(item => item.id === itemData.id ? { ...itemData, id: item.id } as EquipmentItem : item));
         } else { // Adding
-            const newItem: EquipmentItem = { ...itemData, id: crypto.randomUUID() };
+            const newItem: EquipmentItem = { ...itemData, id: crypto.randomUUID() } as EquipmentItem;
             setEquipment(prev => [...prev, newItem]);
         }
         closeModal();
@@ -337,8 +376,9 @@ const App: React.FC = () => {
         }
     };
 
-    // --- Excel Import ---
+    // --- Excel Import/Export ---
     const handleExcelImportClick = () => fileInputRef.current?.click();
+    
     const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
@@ -351,39 +391,108 @@ const App: React.FC = () => {
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
                 const json: any[] = window.XLSX.utils.sheet_to_json(worksheet);
-                // ... (rest of the function is unchanged)
                 let updatedCount = 0, addedCount = 0, skippedCount = 0;
                 const equipmentMap = new Map<string, EquipmentItem>(equipment.map(item => [item.name.toLowerCase().trim(), item]));
+                
                 json.forEach(row => {
                     const name = row.name || row.Name;
                     const price = row.price || row.Price;
                     const unit = row.unit || row.Unit;
-                    if (typeof name === 'string' && name.trim() !== '' && typeof price === 'number' && price >= 0) {
-                        const trimmedName = name.trim(), lowerCaseName = trimmedName.toLowerCase(), existingItem = equipmentMap.get(lowerCaseName);
+                    const department = row.department || row.Department;
+
+                    if (typeof name === 'string' && name.trim() !== '' && 
+                        typeof price === 'number' && price >= 0 &&
+                        typeof department === 'string' && DEPARTMENTS.includes(department.trim())) {
+                        
+                        const trimmedName = name.trim();
+                        const lowerCaseName = trimmedName.toLowerCase();
+                        const existingItem = equipmentMap.get(lowerCaseName);
+                        const trimmedDepartment = department.trim();
+
                         if (existingItem) {
                             existingItem.price = price;
+                            existingItem.department = trimmedDepartment;
                             if (typeof unit === 'string' && unit.trim() !== '') existingItem.unit = unit.trim();
                             equipmentMap.set(lowerCaseName, existingItem);
                             updatedCount++;
                         } else {
                             if (typeof unit === 'string' && unit.trim() !== '') {
-                                const newItem: EquipmentItem = { id: crypto.randomUUID(), name: trimmedName, price: price, unit: unit.trim() };
+                                const newItem: EquipmentItem = { id: crypto.randomUUID(), name: trimmedName, price: price, unit: unit.trim(), department: trimmedDepartment };
                                 equipmentMap.set(lowerCaseName, newItem);
                                 addedCount++;
                             } else skippedCount++;
                         }
                     } else skippedCount++;
                 });
+
                 setEquipment(Array.from(equipmentMap.values()));
-                alert(`นำเข้าสำเร็จ:\n- เพิ่มใหม่ ${addedCount} รายการ\n- อัปเดตราคา ${updatedCount} รายการ\n- ข้าม ${skippedCount} รายการ (ข้อมูลไม่ครบ)`);
+                alert(`นำเข้าสำเร็จ:\n- เพิ่มใหม่ ${addedCount} รายการ\n- อัปเดตราคา ${updatedCount} รายการ\n- ข้าม ${skippedCount} รายการ (ข้อมูลไม่ครบ หรือไม่มีแผนก)`);
             } catch (error) {
                 console.error("Error processing Excel file:", error);
-                alert("เกิดข้อผิดพลาดในการประมวลผลไฟล์ Excel โปรดตรวจสอบว่าไฟล์มีรูปแบบที่ถูกต้อง (คอลัมน์ name, price, unit)");
+                alert("เกิดข้อผิดพลาดในการประมวลผลไฟล์ Excel โปรดตรวจสอบว่าไฟล์มีรูปแบบที่ถูกต้อง (คอลัมน์ name, price, unit, department)");
             } finally {
                 if(fileInputRef.current) fileInputRef.current.value = '';
             }
         };
         reader.readAsArrayBuffer(file);
+    };
+
+    const handleExportToExcel = () => {
+        if (quotationItems.length === 0) {
+            alert("ไม่มีรายการในใบเสนอราคาสำหรับ Export");
+            return;
+        }
+
+        const wb = window.XLSX.utils.book_new();
+        const ws_data: any[][] = [];
+
+        ws_data.push([`ใบเสนอราคา: ${currentProjectName}`]);
+        ws_data.push([]); // Empty row
+        ws_data.push(['ลำดับ', 'รายการ', 'หน่วย', 'จำนวน', 'ราคาต่อหน่วย', 'ราคารวม']);
+
+        let itemNumber = 1;
+        departmentsInView.forEach(dep => {
+            ws_data.push([dep]);
+            const itemsInDep = quotationItems.filter(qi => qi.item.department === dep);
+            itemsInDep.forEach(({ item, quantity }) => {
+                ws_data.push([
+                    itemNumber++,
+                    item.name,
+                    item.unit,
+                    quantity,
+                    item.price,
+                    item.price * quantity
+                ]);
+            });
+        });
+
+        ws_data.push([]);
+        ws_data.push([null, null, null, null, 'ราคาทุน', subTotal]);
+        ws_data.push([null, null, null, null, `กำไร (${profitMargin}%)`, profitAmount]);
+        ws_data.push([null, null, null, null, 'รวมก่อน VAT', totalBeforeVat]);
+        ws_data.push([null, null, null, null, 'VAT (7%)', vatAmount]);
+        ws_data.push([null, null, null, null, 'ยอดรวมสุทธิ', grandTotal]);
+
+        const ws = window.XLSX.utils.aoa_to_sheet(ws_data);
+
+        ws['!cols'] = [ { wch: 5 }, { wch: 50 }, { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 15 } ];
+        
+        const merges: any[] = [];
+        merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }); // Project name header
+
+        let rowIndex = 3; 
+        departmentsInView.forEach(dep => {
+            merges.push({ s: { r: rowIndex, c: 0 }, e: { r: rowIndex, c: 5 } });
+            const itemsInDep = quotationItems.filter(qi => qi.item.department === dep);
+            rowIndex += itemsInDep.length + 1;
+        });
+        ws['!merges'] = merges;
+
+        window.XLSX.utils.book_append_sheet(wb, ws, "ใบเสนอราคา");
+
+        const today = new Date().toISOString().slice(0, 10);
+        const fileName = `ใบเสนอราคา-${currentProjectName.replace(/[\s()]/g, '_')}-${today}.xlsx`;
+        window.XLSX.writeFile(wb, fileName);
     };
 
     // --- Main Render ---
@@ -401,6 +510,7 @@ const App: React.FC = () => {
                                <button onClick={handleSaveCurrentProject} title="บันทึกโปรเจคปัจจุบัน" className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"><SaveIcon className="h-5 w-5"/><span className="hidden md:inline">บันทึก</span></button>
                                <button onClick={() => setIsProjectManagerOpen(true)} title="จัดการโปรเจค" className="flex items-center gap-2 px-3 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"><FolderOpenIcon className="h-5 w-5"/><span className="hidden md:inline">โปรเจค</span></button>
                                <button onClick={handleExcelImportClick} title="นำเข้าราคาจาก Excel" className="flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"><ArrowUpTrayIcon className="h-5 w-5"/><span className="hidden md:inline">นำเข้า</span></button>
+                               <button onClick={handleExportToExcel} title="Export เป็น Excel" className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"><DocumentArrowDownIcon className="h-5 w-5"/><span className="hidden md:inline">Export</span></button>
                                <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx, .xls" className="hidden" />
                             </div>
                         </div>
@@ -412,11 +522,72 @@ const App: React.FC = () => {
                         <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow-md">
                             <h2 className="text-xl font-semibold mb-4 border-b pb-2">รายการอุปกรณ์</h2>
                             <div className="flex flex-wrap items-end gap-2 mb-4 p-4 border rounded-lg bg-gray-50">
-                                <div className="flex-grow min-w-[250px]"><label htmlFor="equipment-select" className="block text-sm font-medium text-gray-700">เลือกอุปกรณ์</label><select id="equipment-select" value={selectedItemId} onChange={e => setSelectedItemId(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2"><option value="" disabled>--- กรุณาเลือก ---</option>{equipment.sort((a,b) => a.name.localeCompare(b.name)).map(item => (<option key={item.id} value={item.id}>{item.name} ({formatCurrency(item.price)})</option>))}</select></div>
+                                <div className="flex-grow min-w-[200px]">
+                                    <label htmlFor="department-select" className="block text-sm font-medium text-gray-700">เลือกแผนก</label>
+                                    <select
+                                        id="department-select"
+                                        value={selectedDepartment}
+                                        onChange={e => {
+                                            setSelectedDepartment(e.target.value);
+                                            setSelectedItemId(''); // Reset equipment selection
+                                        }}
+                                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2"
+                                    >
+                                        <option value="" disabled>--- กรุณาเลือกแผนก ---</option>
+                                        {DEPARTMENTS.map(dep => <option key={dep} value={dep}>{dep}</option>)}
+                                    </select>
+                                </div>
+                                <div className="flex-grow min-w-[250px]">
+                                  <label htmlFor="equipment-select" className="block text-sm font-medium text-gray-700">เลือกอุปกรณ์</label>
+                                  <select 
+                                    id="equipment-select" 
+                                    value={selectedItemId} 
+                                    onChange={e => setSelectedItemId(e.target.value)} 
+                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 disabled:bg-gray-200"
+                                    disabled={!selectedDepartment}
+                                  >
+                                    <option value="" disabled>--- กรุณาเลือก ---</option>
+                                    {filteredEquipment.sort((a,b) => a.name.localeCompare(b.name)).map(item => (<option key={item.id} value={item.id}>{item.name} ({formatCurrency(item.price)})</option>))}
+                                  </select>
+                                </div>
                                 <div className="flex-shrink-0"><label htmlFor="quantity-input" className="block text-sm font-medium text-gray-700">จำนวน</label><input id="quantity-input" type="number" min="1" value={currentQuantity} onChange={e => setCurrentQuantity(e.target.value)} className="mt-1 w-24 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" /></div>
                                 <div className="flex-shrink-0 self-end"><button onClick={handleAddItemToQuotation} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors h-[42px]"><PlusIcon className="h-5 w-5"/><span>เพิ่ม</span></button></div>
                             </div>
-                            <div className="max-h-[calc(100vh-550px)] overflow-y-auto"><table className="w-full text-sm text-left"><thead className="bg-gray-100 sticky top-0"><tr><th className="p-2">รายการ</th><th className="p-2 w-32 text-center">จำนวน</th><th className="p-2 w-28 text-right">ราคา/หน่วย</th><th className="p-2 w-28 text-right">รวม</th><th className="p-2 w-12 text-center">ลบ</th></tr></thead><tbody>{quotationItems.length > 0 ? quotationItems.map(({ item, quantity }) => (<tr key={item.id} className="border-b hover:bg-gray-50"><td className="p-2 font-medium">{item.name}</td><td className="p-2"><div className="flex items-center justify-center gap-1"><input type="number" min="1" value={quantity} onChange={e => handleUpdateQuotationQuantity(item.id, e.target.value)} className="w-20 p-1 border rounded-md text-center" /><span className="text-gray-600">{item.unit}</span></div></td><td className="p-2 text-right font-mono">{formatCurrency(item.price)}</td><td className="p-2 text-right font-mono font-semibold">{formatCurrency(item.price * quantity)}</td><td className="p-2 text-center"><button onClick={() => handleRemoveFromQuotation(item.id)} title="ลบรายการนี้" className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full"><TrashIcon className="h-5 w-5" /></button></td></tr>)) : (<tr><td colSpan={5} className="text-center text-gray-500 py-10">ยังไม่มีรายการในใบเสนอราคา</td></tr>)}</tbody></table></div>
+                            <div className="max-h-[calc(100vh-550px)] overflow-y-auto"><table className="w-full text-sm text-left"><thead className="bg-gray-100 sticky top-0"><tr><th className="p-2">รายการ</th><th className="p-2 w-32 text-center">จำนวน</th><th className="p-2 w-28 text-right">ราคา/หน่วย</th><th className="p-2 w-28 text-right">รวม</th><th className="p-2 w-12 text-center">ลบ</th></tr></thead>
+                            <tbody>
+                                {quotationItems.length > 0 ? (
+                                    departmentsInView.map(dep => {
+                                        const itemsInDep = quotationItems.filter(qi => qi.item.department === dep);
+                                        return (
+                                            <React.Fragment key={dep}>
+                                                <tr className="bg-slate-100 border-b border-slate-300">
+                                                    <td colSpan={5} className="p-2 font-semibold text-slate-700 text-base">{dep}</td>
+                                                </tr>
+                                                {itemsInDep.map(({ item, quantity }) => (
+                                                    <tr key={item.id} className="border-b hover:bg-gray-50">
+                                                        <td className="p-2 font-medium pl-6">{item.name}</td>
+                                                        <td className="p-2">
+                                                            <div className="flex items-center justify-center gap-1">
+                                                                <input type="number" min="1" value={quantity} onChange={e => handleUpdateQuotationQuantity(item.id, e.target.value)} className="w-20 p-1 border rounded-md text-center" />
+                                                                <span className="text-gray-600">{item.unit}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="p-2 text-right font-mono">{formatCurrency(item.price)}</td>
+                                                        <td className="p-2 text-right font-mono font-semibold">{formatCurrency(item.price * quantity)}</td>
+                                                        <td className="p-2 text-center">
+                                                            <button onClick={() => handleRemoveFromQuotation(item.id)} title="ลบรายการนี้" className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full">
+                                                                <TrashIcon className="h-5 w-5" />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </React.Fragment>
+                                        );
+                                    })
+                                ) : (
+                                    <tr><td colSpan={5} className="text-center text-gray-500 py-10">ยังไม่มีรายการในใบเสนอราคา</td></tr>
+                                )}
+                            </tbody></table></div>
                             
                             <div className="mt-6 flex justify-end">
                                 <div className="w-full max-w-md space-y-4">
@@ -479,13 +650,28 @@ const App: React.FC = () => {
             </Modal>
             
             <Modal isOpen={isEquipmentManagerOpen} onClose={() => setIsEquipmentManagerOpen(false)} title="จัดการรายการอุปกรณ์ทั้งหมด">
-                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
-                    {equipment.sort((a, b) => a.name.localeCompare(b.name)).map(item => (
-                        <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 border p-3 rounded-lg hover:bg-gray-50">
-                            <div className="flex-1 min-w-[200px]"><p className="font-medium">{item.name}</p><p className="text-sm text-gray-500">{formatCurrency(item.price)} / {item.unit}</p></div>
-                            <div className="flex items-center gap-1 sm:gap-2"><button onClick={() => openModalForEdit(item)} title="แก้ไขอุปกรณ์" className="p-2 text-yellow-600 hover:text-yellow-800 hover:bg-yellow-100 rounded-full transition-colors"><PencilIcon className="h-5 w-5"/></button><button onClick={() => setItemToDelete(item)} title="ลบอุปกรณ์นี้" className="p-2 text-red-600 hover:text-red-800 hover:bg-red-100 rounded-full transition-colors"><TrashIcon className="h-5 w-5"/></button></div>
-                        </div>
-                    ))}
+                 <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+                    {DEPARTMENTS.map(dep => {
+                        const itemsInDep = equipment.filter(item => item.department === dep).sort((a, b) => a.name.localeCompare(b.name));
+                        if (itemsInDep.length === 0) return null;
+                        return (
+                            <div key={dep}>
+                                <h3 className="text-lg font-semibold text-gray-700 border-b pb-1 mb-2 sticky top-0 bg-white">{dep}</h3>
+                                {itemsInDep.map(item => (
+                                    <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 border p-3 rounded-lg hover:bg-gray-50 mb-2">
+                                        <div className="flex-1 min-w-[200px]">
+                                            <p className="font-medium">{item.name}</p>
+                                            <p className="text-sm text-gray-500">{formatCurrency(item.price)} / {item.unit}</p>
+                                        </div>
+                                        <div className="flex items-center gap-1 sm:gap-2">
+                                            <button onClick={() => openModalForEdit(item)} title="แก้ไขอุปกรณ์" className="p-2 text-yellow-600 hover:text-yellow-800 hover:bg-yellow-100 rounded-full transition-colors"><PencilIcon className="h-5 w-5"/></button>
+                                            <button onClick={() => setItemToDelete(item)} title="ลบอุปกรณ์นี้" className="p-2 text-red-600 hover:text-red-800 hover:bg-red-100 rounded-full transition-colors"><TrashIcon className="h-5 w-5"/></button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )
+                    })}
                 </div>
             </Modal>
 
