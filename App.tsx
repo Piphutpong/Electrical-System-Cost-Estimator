@@ -25,13 +25,13 @@ const sortEquipmentList = (list: EquipmentItem[]): EquipmentItem[] => {
             return -1;
         } else if (depBIndex !== -1) { // Only B is standard
             return 1;
-        } else { // Both are custom, sort by name
+        } else { // Both are custom, sort by department name
             const depCompare = a.department.localeCompare(b.department, 'th');
             if (depCompare !== 0) return depCompare;
         }
         
-        // If departments are the same, sort by equipment name
-        return a.name.localeCompare(b.name, 'th');
+        // If departments are the same, preserve original order (rely on stable sort)
+        return 0;
     });
 };
 
@@ -134,9 +134,13 @@ const App: React.FC = () => {
         try {
             const savedStore = localStorage.getItem(LOCAL_STORAGE_KEY);
             if (savedStore) {
-                const { projects: savedProjects, lastProjectId } = JSON.parse(savedStore);
+                // FIX: Explicitly cast the parsed JSON to a defined type to ensure type safety.
+                // The original code was prone to type errors with strict settings because JSON.parse returns `any`.
+                const { projects: savedProjects, lastProjectId } = JSON.parse(savedStore) as { projects: Project[], lastProjectId: string | null };
+                
                 if (Array.isArray(savedProjects)) {
                     setProjects(savedProjects);
+                    
                     const projectToLoad = savedProjects.find(p => p.id === lastProjectId);
                     if (projectToLoad) {
                         loadProjectData(projectToLoad.data);
