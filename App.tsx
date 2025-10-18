@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { EquipmentItem, QuotationItem } from './types';
 import { INITIAL_EQUIPMENT_ITEMS } from './constants';
-import { PlusIcon, TrashIcon, PencilIcon, PrinterIcon, SaveIcon, FolderOpenIcon, DocumentArrowDownIcon, ArrowUpTrayIcon } from './components/icons';
+import { PlusIcon, TrashIcon, PencilIcon, PrinterIcon, SaveIcon, FolderOpenIcon, DocumentArrowDownIcon, ArrowUpTrayIcon, ArrowPathIcon } from './components/icons';
 import Modal from './components/Modal';
 
 declare global {
@@ -189,6 +189,14 @@ const App: React.FC = () => {
                 console.error("Failed to load project:", error);
                 alert('เกิดข้อผิดพลาดในการโหลดโปรเจค');
             }
+        }
+    };
+
+    const handleRestoreDefaults = () => {
+        if (window.confirm('คุณแน่ใจหรือไม่ว่าต้องการคืนค่ารายการอุปกรณ์ทั้งหมดเป็นค่าเริ่มต้น? รายการที่คุณเพิ่มเองจะถูกลบและการแก้ไขจะย้อนกลับทั้งหมด')) {
+            setEquipment(INITIAL_EQUIPMENT_ITEMS);
+            setQuotation({}); // Clear quotation as well to avoid inconsistency
+            alert('คืนค่ารายการอุปกรณ์เป็นค่าเริ่มต้นเรียบร้อยแล้ว');
         }
     };
 
@@ -492,6 +500,10 @@ const App: React.FC = () => {
                                     <button onClick={() => setIsEquipmentManagerOpen(true)} className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors text-sm">
                                         <PencilIcon className="h-5 w-5"/>
                                         <span>แก้ไขรายการทั้งหมด</span>
+                                    </button>
+                                     <button onClick={handleRestoreDefaults} className="flex items-center justify-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors text-sm">
+                                        <ArrowPathIcon className="h-5 w-5"/>
+                                        <span>คืนค่าเริ่มต้น</span>
                                     </button>
                                 </div>
                             </div>
