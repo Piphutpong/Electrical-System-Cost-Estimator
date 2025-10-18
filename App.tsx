@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { EquipmentItem, QuotationItem, Project, ProjectData } from './types';
 import { INITIAL_EQUIPMENT_ITEMS, DEPARTMENTS } from './constants';
@@ -9,6 +10,31 @@ declare global {
     XLSX: any;
   }
 }
+
+// Helper function to sort equipment list
+const sortEquipmentList = (list: EquipmentItem[]): EquipmentItem[] => {
+    return [...list].sort((a, b) => {
+        const depAIndex = DEPARTMENTS.indexOf(a.department);
+        const depBIndex = DEPARTMENTS.indexOf(b.department);
+
+        // Sort by department order first
+        if (depAIndex !== -1 && depBIndex !== -1) { // Both standard
+            if (depAIndex < depBIndex) return -1;
+            if (depAIndex > depBIndex) return 1;
+        } else if (depAIndex !== -1) { // Only A is standard
+            return -1;
+        } else if (depBIndex !== -1) { // Only B is standard
+            return 1;
+        } else { // Both are custom, sort by name
+            const depCompare = a.department.localeCompare(b.department, 'th');
+            if (depCompare !== 0) return depCompare;
+        }
+        
+        // If departments are the same, sort by equipment name
+        return a.name.localeCompare(b.name, 'th');
+    });
+};
+
 
 // --- Sub Components ---
 // Moved outside the main App component to prevent re-definition on every render,
@@ -30,7 +56,7 @@ const EquipmentForm: React.FC<{
         name: item?.name || '', 
         price: item?.price || 0, 
         unit: item?.unit || '',
-        department: item?.department || ''
+        department: item?.department || DEPARTMENTS[2] // Default to 'แผนกแรงต่ำ'
     });
     const handleSubmit = (e: React.FormEvent) => { 
         e.preventDefault(); 
@@ -71,7 +97,7 @@ const LOCAL_STORAGE_KEY = 'electrical-estimator-projects-store';
 
 const App: React.FC = () => {
     // Core data state
-    const [equipment, setEquipment] = useState<EquipmentItem[]>(INITIAL_EQUIPMENT_ITEMS);
+    const [equipment, setEquipment] = useState<EquipmentItem[]>(sortEquipmentList(INITIAL_EQUIPMENT_ITEMS));
     const [quotation, setQuotation] = useState<Record<string, number>>({});
     const [profitMargin, setProfitMargin] = useState(0);
     const [companyInfo, setCompanyInfo] = useState({
@@ -150,7 +176,7 @@ const App: React.FC = () => {
                 return item ? { item, quantity } : null;
             })
             .filter((item): item is QuotationItem => item !== null)
-            .sort((a, b) => a.item.name.localeCompare(b.item.name));
+            .sort((a, b) => a.item.name.localeCompare(b.item.name, 'th'));
     }, [quotation, equipment]);
     
     const departmentsInView = useMemo(() => {
@@ -186,7 +212,7 @@ const App: React.FC = () => {
             ...e,
             department: e.department || DEPARTMENTS[2] // Default to 'แผนกแรงต่ำ' if missing
         }));
-        setEquipment(migratedEquipment);
+        setEquipment(sortEquipmentList(migratedEquipment));
         setQuotation(data.quotation || {});
         setProfitMargin(data.profitMargin || 0);
         setCompanyInfo(data.companyInfo || { name: '', address: '', phone: '' });
@@ -363,10 +389,10 @@ const App: React.FC = () => {
 
     const handleSaveItem = (itemData: Omit<EquipmentItem, 'id'> & { id?: string }) => {
         if (itemData.id) { // Editing
-            setEquipment(prev => prev.map(item => item.id === itemData.id ? { ...itemData, id: item.id } as EquipmentItem : item));
+            setEquipment(prev => sortEquipmentList(prev.map(item => item.id === itemData.id ? { ...itemData, id: item.id } as EquipmentItem : item)));
         } else { // Adding
             const newItem: EquipmentItem = { ...itemData, id: crypto.randomUUID() } as EquipmentItem;
-            setEquipment(prev => [...prev, newItem]);
+            setEquipment(prev => sortEquipmentList([...prev, newItem]));
         }
         closeModal();
     };
@@ -384,7 +410,7 @@ const App: React.FC = () => {
     
     const handleRestoreDefaults = () => {
         if (window.confirm('คุณแน่ใจหรือไม่ว่าต้องการคืนค่ารายการอุปกรณ์ทั้งหมดเป็นค่าเริ่มต้น? รายการที่คุณเพิ่มเองจะถูกลบและการแก้ไขจะย้อนกลับทั้งหมด')) {
-            setEquipment(INITIAL_EQUIPMENT_ITEMS);
+            setEquipment(sortEquipmentList(INITIAL_EQUIPMENT_ITEMS));
             alert('คืนค่ารายการอุปกรณ์เป็นค่าเริ่มต้นเรียบร้อยแล้ว');
         }
     };
@@ -438,7 +464,7 @@ const App: React.FC = () => {
                     } else skippedCount++;
                 });
 
-                setEquipment(Array.from(equipmentMap.values()));
+                setEquipment(sortEquipmentList(Array.from(equipmentMap.values())));
                 alert(`นำเข้าสำเร็จ:\n- เพิ่มใหม่ ${addedCount} รายการ\n- อัปเดตราคา ${updatedCount} รายการ\n- ข้าม ${skippedCount} รายการ (ข้อมูลไม่ครบ หรือไม่มีแผนก)`);
             } catch (error) {
                 console.error("Error processing Excel file:", error);
@@ -524,28 +550,8 @@ const App: React.FC = () => {
 
         const wb = window.XLSX.utils.book_new();
         
-        // Sort equipment by department then by name for a clean list
-        const sortedEquipment = [...equipment].sort((a, b) => {
-            // Find index in DEPARTMENTS array to sort by it
-            const depAIndex = DEPARTMENTS.indexOf(a.department);
-            const depBIndex = DEPARTMENTS.indexOf(b.department);
-
-            if (depAIndex > -1 && depBIndex > -1) { // Both are standard departments
-                if (depAIndex < depBIndex) return -1;
-                if (depAIndex > depBIndex) return 1;
-            } else if (depAIndex > -1) { // A is standard, B is not
-                return -1;
-            } else if (depBIndex > -1) { // B is standard, A is not
-                return 1;
-            } else { // Neither are standard, sort alphabetically
-                const depCompare = a.department.localeCompare(b.department);
-                if (depCompare !== 0) return depCompare;
-            }
-            
-            return a.name.localeCompare(b.name);
-        });
-        
-        const ws_data = sortedEquipment.map(item => ({
+        // Use the already sorted equipment list
+        const ws_data = equipment.map(item => ({
             'name': item.name,
             'price': item.price,
             'unit': item.unit,
@@ -616,7 +622,7 @@ const App: React.FC = () => {
                                     disabled={!selectedDepartment}
                                   >
                                     <option value="" disabled>--- กรุณาเลือก ---</option>
-                                    {filteredEquipment.sort((a,b) => a.name.localeCompare(b.name)).map(item => (<option key={item.id} value={item.id}>{item.name} ({formatCurrency(item.price)})</option>))}
+                                    {filteredEquipment.map(item => (<option key={item.id} value={item.id}>{item.name} ({formatCurrency(item.price)})</option>))}
                                   </select>
                                 </div>
                                 <div className="flex-shrink-0"><label htmlFor="quantity-input" className="block text-sm font-medium text-gray-700">จำนวน</label><input id="quantity-input" type="number" min="1" value={currentQuantity} onChange={e => setCurrentQuantity(e.target.value)} className="mt-1 w-24 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" /></div>
@@ -739,7 +745,7 @@ const App: React.FC = () => {
             <Modal isOpen={isEquipmentManagerOpen} onClose={() => setIsEquipmentManagerOpen(false)} title="จัดการรายการอุปกรณ์ทั้งหมด">
                  <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
                     {DEPARTMENTS.map(dep => {
-                        const itemsInDep = equipment.filter(item => item.department === dep).sort((a, b) => a.name.localeCompare(b.name));
+                        const itemsInDep = equipment.filter(item => item.department === dep);
                         if (itemsInDep.length === 0) return null;
                         return (
                             <div key={dep}>
