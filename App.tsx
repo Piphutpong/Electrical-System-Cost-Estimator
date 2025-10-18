@@ -44,13 +44,6 @@ const EquipmentForm: React.FC<{
     )
 };
 
-const InfoInput: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: string }> = ({ label, ...props }) => (
-    <div>
-        <label className="block text-sm font-medium text-gray-700">{label}</label>
-        <input {...props} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" />
-    </div>
-);
-
 const LOCAL_STORAGE_KEY = 'electrical-estimator-projects-store';
 
 const App: React.FC = () => {
@@ -415,45 +408,57 @@ const App: React.FC = () => {
                 </header>
 
                 <main className="container mx-auto p-4 flex flex-col gap-6">
-                    {/* ... Rest of the UI is mostly the same, with profit margin input changed ... */}
-                     <div className="bg-white p-6 rounded-lg shadow-md">
-                        <h2 className="text-xl font-semibold mb-4 border-b pb-2">ข้อมูลโปรเจคและลูกค้า</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-3">
-                                <h3 className="font-semibold text-gray-600">ข้อมูลบริษัท (ผู้เสนอราคา)</h3>
-                                <InfoInput label="ชื่อบริษัท" placeholder="เช่น บริษัท การไฟฟ้าไทย จำกัด" value={companyInfo.name} onChange={(e: any) => setCompanyInfo(c => ({...c, name: e.target.value}))} />
-                                <InfoInput label="ที่อยู่" placeholder="123 ถ.สุขุมวิท กรุงเทพฯ" value={companyInfo.address} onChange={(e: any) => setCompanyInfo(c => ({...c, address: e.target.value}))} />
-                                <InfoInput label="เบอร์โทร" placeholder="02-123-4567" value={companyInfo.phone} onChange={(e: any) => setCompanyInfo(c => ({...c, phone: e.target.value}))} />
-                            </div>
-                            <div className="space-y-3">
-                                <h3 className="font-semibold text-gray-600">ข้อมูลลูกค้า</h3>
-                                <InfoInput label="ชื่อลูกค้า / บริษัท" placeholder="เช่น คุณ สมชาย ใจดี" value={clientInfo.name} onChange={(e: any) => setClientInfo(c => ({...c, name: e.target.value}))} />
-                                <InfoInput label="ชื่อโครงการ" placeholder="เช่น โครงการขยายเขต ซอย 1" value={clientInfo.project} onChange={(e: any) => setClientInfo(c => ({...c, project: e.target.value}))} />
-                            </div>
-                        </div>
-                    </div>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow-md">
-                            <h2 className="text-xl font-semibold mb-4 border-b pb-2">รายการในใบเสนอราคา</h2>
+                            <h2 className="text-xl font-semibold mb-4 border-b pb-2">รายการอุปกรณ์</h2>
                             <div className="flex flex-wrap items-end gap-2 mb-4 p-4 border rounded-lg bg-gray-50">
                                 <div className="flex-grow min-w-[250px]"><label htmlFor="equipment-select" className="block text-sm font-medium text-gray-700">เลือกอุปกรณ์</label><select id="equipment-select" value={selectedItemId} onChange={e => setSelectedItemId(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2"><option value="" disabled>--- กรุณาเลือก ---</option>{equipment.sort((a,b) => a.name.localeCompare(b.name)).map(item => (<option key={item.id} value={item.id}>{item.name} ({formatCurrency(item.price)})</option>))}</select></div>
                                 <div className="flex-shrink-0"><label htmlFor="quantity-input" className="block text-sm font-medium text-gray-700">จำนวน</label><input id="quantity-input" type="number" min="1" value={currentQuantity} onChange={e => setCurrentQuantity(e.target.value)} className="mt-1 w-24 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" /></div>
                                 <div className="flex-shrink-0 self-end"><button onClick={handleAddItemToQuotation} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors h-[42px]"><PlusIcon className="h-5 w-5"/><span>เพิ่ม</span></button></div>
                             </div>
                             <div className="max-h-[calc(100vh-550px)] overflow-y-auto"><table className="w-full text-sm text-left"><thead className="bg-gray-100 sticky top-0"><tr><th className="p-2">รายการ</th><th className="p-2 w-32 text-center">จำนวน</th><th className="p-2 w-28 text-right">ราคา/หน่วย</th><th className="p-2 w-28 text-right">รวม</th><th className="p-2 w-12 text-center">ลบ</th></tr></thead><tbody>{quotationItems.length > 0 ? quotationItems.map(({ item, quantity }) => (<tr key={item.id} className="border-b hover:bg-gray-50"><td className="p-2 font-medium">{item.name}</td><td className="p-2"><div className="flex items-center justify-center gap-1"><input type="number" min="1" value={quantity} onChange={e => handleUpdateQuotationQuantity(item.id, e.target.value)} className="w-20 p-1 border rounded-md text-center" /><span className="text-gray-600">{item.unit}</span></div></td><td className="p-2 text-right font-mono">{formatCurrency(item.price)}</td><td className="p-2 text-right font-mono font-semibold">{formatCurrency(item.price * quantity)}</td><td className="p-2 text-center"><button onClick={() => handleRemoveFromQuotation(item.id)} title="ลบรายการนี้" className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full"><TrashIcon className="h-5 w-5" /></button></td></tr>)) : (<tr><td colSpan={5} className="text-center text-gray-500 py-10">ยังไม่มีรายการในใบเสนอราคา</td></tr>)}</tbody></table></div>
-                        </div>
-                        <div className="flex flex-col gap-6">
-                            <div className="bg-white p-6 rounded-lg shadow-md self-start">
-                                <h2 className="text-xl font-semibold mb-4 border-b pb-2">สรุปยอดรวม</h2>
-                                <div className="mt-4 pt-4">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <label htmlFor="profit-margin" className="font-semibold">กำไร (%):</label>
-                                        <input id="profit-margin" type="number" min="0" value={profitMargin} onChange={e => setProfitMargin(Number(e.target.value))} className="w-24 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-right font-mono"/>
+                            
+                            <div className="mt-6 flex justify-end">
+                                <div className="w-full max-w-md space-y-4">
+                                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                                        <label htmlFor="profit-margin" className="font-semibold text-gray-800">กำไร (%):</label>
+                                        <input 
+                                            id="profit-margin" 
+                                            type="number" 
+                                            min="0" 
+                                            value={profitMargin} 
+                                            onChange={e => setProfitMargin(Number(e.target.value))} 
+                                            className="w-28 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-right font-mono"
+                                        />
                                     </div>
-                                    <div className="space-y-1 text-sm"><div className="flex justify-between"><span>ราคาทุน:</span><span className="font-mono">{formatCurrency(subTotal)}</span></div><div className="flex justify-between"><span>กำไร ({profitMargin}%):</span><span className="font-mono">{formatCurrency(profitAmount)}</span></div><div className="flex justify-between font-semibold"><span>รวมก่อน VAT:</span><span className="font-mono">{formatCurrency(totalBeforeVat)}</span></div><div className="flex justify-between"><span>VAT (7%):</span><span className="font-mono">{formatCurrency(vatAmount)}</span></div></div>
-                                    <div className="mt-2 pt-2 border-t-2 border-dashed"><div className="flex justify-between items-center text-lg font-bold"><span>ยอดรวมสุทธิ:</span><span className="text-2xl font-mono text-indigo-600">{formatCurrency(grandTotal)}</span></div></div>
+                                    <div className="border-t border-gray-200 pt-4 space-y-2">
+                                        <div className="flex justify-between text-gray-600">
+                                            <span>ราคาทุน</span>
+                                            <span className="font-mono">{formatCurrency(subTotal)}</span>
+                                        </div>
+                                        <div className="flex justify-between text-gray-600">
+                                            <span>กำไร ({profitMargin}%)</span>
+                                            <span className="font-mono">{formatCurrency(profitAmount)}</span>
+                                        </div>
+                                        <div className="flex justify-between font-semibold text-gray-800 pt-1">
+                                            <span>รวมก่อน VAT</span>
+                                            <span className="font-mono">{formatCurrency(totalBeforeVat)}</span>
+                                        </div>
+                                        <div className="flex justify-between text-gray-600">
+                                            <span>VAT (7%)</span>
+                                            <span className="font-mono">{formatCurrency(vatAmount)}</span>
+                                        </div>
+                                    </div>
+                                    <div className="border-t-2 border-gray-300 pt-4">
+                                        <div className="flex justify-between items-baseline text-xl font-bold text-gray-900">
+                                            <span>ยอดรวมสุทธิ</span>
+                                            <span className="text-3xl font-mono text-indigo-600">{formatCurrency(grandTotal)}</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
+                        </div>
+                        <div className="flex flex-col gap-6">
                              <div className="bg-white p-6 rounded-lg shadow-md self-start">
                                 <h2 className="text-xl font-semibold mb-4 border-b pb-2">จัดการรายการอุปกรณ์</h2>
                                 <p className="text-xs text-gray-500 mb-4">เพิ่ม, แก้ไข, หรือลบรายการอุปกรณ์ทั้งหมดในระบบที่นี่</p>
