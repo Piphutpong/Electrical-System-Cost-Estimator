@@ -30,6 +30,11 @@ const App: React.FC = () => {
     });
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // State for the new UI
+    const [selectedItemId, setSelectedItemId] = useState<string>('');
+    const [currentQuantity, setCurrentQuantity] = useState<string>('1');
+    const [isEquipmentManagerOpen, setIsEquipmentManagerOpen] = useState(false);
+
     useEffect(() => {
         try {
             const savedData = localStorage.getItem('electrical-estimator-project');
@@ -55,7 +60,7 @@ const App: React.FC = () => {
         }).format(amount);
     };
     
-    const handleQuantityChange = (itemId: string, quantity: string) => {
+    const handleUpdateQuotationQuantity = (itemId: string, quantity: string) => {
         const numQuantity = parseInt(quantity, 10);
         setQuotation(prev => {
             const newQuotation = { ...prev };
@@ -64,6 +69,36 @@ const App: React.FC = () => {
             } else {
                 delete newQuotation[itemId];
             }
+            return newQuotation;
+        });
+    };
+
+    const handleAddItemToQuotation = () => {
+        if (!selectedItemId) {
+            alert('กรุณาเลือกอุปกรณ์');
+            return;
+        }
+        const quantityNum = parseInt(currentQuantity, 10);
+        if (isNaN(quantityNum) || quantityNum <= 0) {
+            alert('กรุณาใส่จำนวนที่ถูกต้อง');
+            return;
+        }
+
+        setQuotation(prev => {
+            const newQuotation = { ...prev };
+            const existingQuantity = newQuotation[selectedItemId] || 0;
+            newQuotation[selectedItemId] = existingQuantity + quantityNum;
+            return newQuotation;
+        });
+
+        setSelectedItemId('');
+        setCurrentQuantity('1');
+    };
+
+    const handleRemoveFromQuotation = (itemId: string) => {
+        setQuotation(prev => {
+            const newQuotation = { ...prev };
+            delete newQuotation[itemId];
             return newQuotation;
         });
     };
@@ -87,8 +122,8 @@ const App: React.FC = () => {
     const vatAmount = useMemo(() => totalBeforeVat * 0.07, [totalBeforeVat]);
     const grandTotal = useMemo(() => totalBeforeVat + vatAmount, [totalBeforeVat, vatAmount]);
 
-
     const openModalForEdit = (item: EquipmentItem) => {
+        setIsEquipmentManagerOpen(false); // Close manager modal if open
         setEditingItem(item);
         setIsModalOpen(true);
     };
@@ -272,7 +307,7 @@ const App: React.FC = () => {
         return (
             <form onSubmit={handleSubmit} className="space-y-4">
                 <Input label="ชื่ออุปกรณ์" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required />
-                <Input label="ราคา" type="number" value={formData.price} onChange={e => setFormData({...formData, price: Number(e.target.value)})} required min="0" />
+                <Input label="ราคา" type="number" value={formData.price} onChange={e => setFormData({...formData, price: Number(e.target.value)})} required min="0" step="0.01" />
                 <Input label="หน่วย" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} required />
                 <div className="flex justify-end space-x-2 pt-4">
                     <button type="button" onClick={onCancel} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">ยกเลิก</button>
@@ -335,62 +370,129 @@ const App: React.FC = () => {
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow-md">
-                            <div className="flex justify-between items-center mb-2 border-b pb-2">
-                                <h2 className="text-xl font-semibold">เลือกรายการอุปกรณ์</h2>
-                                <button onClick={openModalForAdd} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm">
-                                    <PlusIcon className="h-5 w-5"/>
-                                    <span>เพิ่มอุปกรณ์</span>
-                                </button>
+                            <h2 className="text-xl font-semibold mb-4 border-b pb-2">รายการในใบเสนอราคา</h2>
+                            
+                            <div className="flex flex-wrap items-end gap-2 mb-4 p-4 border rounded-lg bg-gray-50">
+                                <div className="flex-grow min-w-[250px]">
+                                    <label htmlFor="equipment-select" className="block text-sm font-medium text-gray-700">เลือกอุปกรณ์</label>
+                                    <select 
+                                        id="equipment-select"
+                                        value={selectedItemId}
+                                        onChange={e => setSelectedItemId(e.target.value)}
+                                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2"
+                                    >
+                                        <option value="" disabled>--- กรุณาเลือก ---</option>
+                                        {equipment.sort((a,b) => a.name.localeCompare(b.name)).map(item => (
+                                            <option key={item.id} value={item.id}>{item.name} ({formatCurrency(item.price)})</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="flex-shrink-0">
+                                    <label htmlFor="quantity-input" className="block text-sm font-medium text-gray-700">จำนวน</label>
+                                    <input 
+                                        id="quantity-input"
+                                        type="number" 
+                                        min="1" 
+                                        value={currentQuantity} 
+                                        onChange={e => setCurrentQuantity(e.target.value)}
+                                        className="mt-1 w-24 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                                    />
+                                </div>
+                                <div className="flex-shrink-0 self-end">
+                                    <button 
+                                        onClick={handleAddItemToQuotation} 
+                                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors h-[42px]"
+                                    >
+                                        <PlusIcon className="h-5 w-5"/>
+                                        <span>เพิ่ม</span>
+                                    </button>
+                                </div>
                             </div>
-                             <p className="text-xs text-gray-500 mb-4">
-                                <strong>Tip:</strong> หากต้องการอัปเดตราคาและเพิ่มอุปกรณ์ใหม่ ให้ใช้ปุ่ม "นำเข้า Excel". ไฟล์ Excel ต้องมีคอลัมน์ `name`, `price` และ `unit`
-                            </p>
-                            <div className="space-y-3 max-h-[calc(100vh-480px)] overflow-y-auto pr-2">
-                                {equipment.sort((a, b) => a.name.localeCompare(b.name)).map(item => (
-                                    <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 border p-3 rounded-lg hover:bg-gray-50">
-                                        <div className="flex-1 min-w-[250px]">
-                                            <p className="font-medium">{item.name}</p>
-                                            <p className="text-sm text-gray-500">{formatCurrency(item.price)} / {item.unit}</p>
-                                        </div>
-                                        <div className="flex items-center gap-1 sm:gap-2">
-                                            <input type="number" placeholder="จำนวน" min="0" value={quotation[item.id] || ''} onChange={(e) => handleQuantityChange(item.id, e.target.value)} className="w-24 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" />
-                                            <button onClick={() => openModalForEdit(item)} title="แก้ไขอุปกรณ์" className="p-2 text-yellow-600 hover:text-yellow-800 hover:bg-yellow-100 rounded-full transition-colors"><PencilIcon className="h-5 w-5"/></button>
-                                            <button onClick={() => setItemToDelete(item)} title="ลบอุปกรณ์นี้" className="p-2 text-red-600 hover:text-red-800 hover:bg-red-100 rounded-full transition-colors"><TrashIcon className="h-5 w-5"/></button>
-                                        </div>
-                                    </div>
-                                ))}
+
+                            <div className="max-h-[calc(100vh-550px)] overflow-y-auto">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="bg-gray-100 sticky top-0">
+                                        <tr>
+                                            <th className="p-2">รายการ</th>
+                                            <th className="p-2 w-32 text-center">จำนวน</th>
+                                            <th className="p-2 w-28 text-right">ราคา/หน่วย</th>
+                                            <th className="p-2 w-28 text-right">รวม</th>
+                                            <th className="p-2 w-12 text-center">ลบ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {quotationItems.length > 0 ? quotationItems.map(({ item, quantity }) => (
+                                            <tr key={item.id} className="border-b hover:bg-gray-50">
+                                                <td className="p-2 font-medium">{item.name}</td>
+                                                <td className="p-2">
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <input 
+                                                            type="number"
+                                                            min="1"
+                                                            value={quantity}
+                                                            onChange={e => handleUpdateQuotationQuantity(item.id, e.target.value)}
+                                                            className="w-20 p-1 border rounded-md text-center"
+                                                        />
+                                                        <span className="text-gray-600">{item.unit}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="p-2 text-right font-mono">{formatCurrency(item.price)}</td>
+                                                <td className="p-2 text-right font-mono font-semibold">{formatCurrency(item.price * quantity)}</td>
+                                                <td className="p-2 text-center">
+                                                    <button onClick={() => handleRemoveFromQuotation(item.id)} title="ลบรายการนี้" className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full">
+                                                        <TrashIcon className="h-5 w-5" />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        )) : (
+                                            <tr>
+                                                <td colSpan={5} className="text-center text-gray-500 py-10">ยังไม่มีรายการในใบเสนอราคา</td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
 
-                        <div className="bg-white p-6 rounded-lg shadow-md self-start">
-                            <h2 className="text-xl font-semibold mb-4 border-b pb-2">สรุปใบเสนอราคา</h2>
-                            <div className="space-y-2 max-h-[calc(100vh-500px)] overflow-y-auto">
-                               {quotationItems.length > 0 ? quotationItems.map(({ item, quantity }) => (
-                                    <div key={item.id} className="flex justify-between items-center text-sm">
-                                        <p className="flex-1 pr-2">{item.name}</p>
-                                        <p className="w-16 text-center">{quantity} {item.unit}</p>
-                                        <p className="w-24 text-right font-mono">{formatCurrency(item.price * quantity)}</p>
+                        <div className="flex flex-col gap-6">
+                            <div className="bg-white p-6 rounded-lg shadow-md self-start">
+                                <h2 className="text-xl font-semibold mb-4 border-b pb-2">สรุปยอดรวม</h2>
+                                <div className="mt-4 pt-4">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <label htmlFor="profit-margin" className="font-semibold">กำไร (%):</label>
+                                        <select id="profit-margin" value={profitMargin} onChange={e => setProfitMargin(Number(e.target.value))} className="p-2 border border-gray-300 rounded-md">
+                                            <option value="0">0%</option><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option><option value="30">30%</option>
+                                        </select>
                                     </div>
-                               )) : ( <p className="text-gray-500 text-center py-10">ยังไม่มีรายการที่เลือก</p> )}
+                                    <div className="space-y-1 text-sm">
+                                        <div className="flex justify-between"><span>ราคาทุน:</span><span className="font-mono">{formatCurrency(subTotal)}</span></div>
+                                        <div className="flex justify-between"><span>กำไร ({profitMargin}%):</span><span className="font-mono">{formatCurrency(profitAmount)}</span></div>
+                                        <div className="flex justify-between font-semibold"><span>รวมก่อน VAT:</span><span className="font-mono">{formatCurrency(totalBeforeVat)}</span></div>
+                                        <div className="flex justify-between"><span>VAT (7%):</span><span className="font-mono">{formatCurrency(vatAmount)}</span></div>
+                                    </div>
+                                    <div className="mt-2 pt-2 border-t-2 border-dashed">
+                                        <div className="flex justify-between items-center text-lg font-bold">
+                                            <span>ยอดรวมสุทธิ:</span>
+                                            <span className="text-2xl font-mono text-indigo-600">{formatCurrency(grandTotal)}</span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="mt-4 pt-4 border-t">
-                                <div className="flex justify-between items-center mb-4">
-                                    <label htmlFor="profit-margin" className="font-semibold">กำไร (%):</label>
-                                    <select id="profit-margin" value={profitMargin} onChange={e => setProfitMargin(Number(e.target.value))} className="p-2 border border-gray-300 rounded-md">
-                                        <option value="0">0%</option><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option><option value="30">30%</option>
-                                    </select>
-                                </div>
-                                <div className="space-y-1 text-sm">
-                                    <div className="flex justify-between"><span>ราคาทุน:</span><span className="font-mono">{formatCurrency(subTotal)}</span></div>
-                                    <div className="flex justify-between"><span>กำไร ({profitMargin}%):</span><span className="font-mono">{formatCurrency(profitAmount)}</span></div>
-                                    <div className="flex justify-between font-semibold"><span>รวมก่อน VAT:</span><span className="font-mono">{formatCurrency(totalBeforeVat)}</span></div>
-                                    <div className="flex justify-between"><span>VAT (7%):</span><span className="font-mono">{formatCurrency(vatAmount)}</span></div>
-                                </div>
-                                <div className="mt-2 pt-2 border-t-2 border-dashed">
-                                    <div className="flex justify-between items-center text-lg font-bold">
-                                        <span>ยอดรวมสุทธิ:</span>
-                                        <span className="text-2xl font-mono text-indigo-600">{formatCurrency(grandTotal)}</span>
-                                    </div>
+
+                             <div className="bg-white p-6 rounded-lg shadow-md self-start">
+                                <h2 className="text-xl font-semibold mb-4 border-b pb-2">จัดการรายการอุปกรณ์</h2>
+                                <p className="text-xs text-gray-500 mb-4">
+                                    เพิ่ม, แก้ไข, หรือลบรายการอุปกรณ์ทั้งหมดในระบบที่นี่
+                                </p>
+                                <div className="flex flex-col space-y-2">
+                                    <button onClick={openModalForAdd} className="flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm">
+                                        <PlusIcon className="h-5 w-5"/>
+                                        <span>เพิ่มอุปกรณ์ใหม่</span>
+                                    </button>
+                                    <button onClick={() => setIsEquipmentManagerOpen(true)} className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors text-sm">
+                                        <PencilIcon className="h-5 w-5"/>
+                                        <span>แก้ไขรายการทั้งหมด</span>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -467,6 +569,23 @@ const App: React.FC = () => {
 
             <Modal isOpen={isModalOpen} onClose={closeModal} title={editingItem ? 'แก้ไขรายการอุปกรณ์' : 'เพิ่มรายการอุปกรณ์ใหม่'}>
                 <EquipmentForm item={editingItem} onSave={handleSaveItem} onCancel={closeModal} />
+            </Modal>
+            
+            <Modal isOpen={isEquipmentManagerOpen} onClose={() => setIsEquipmentManagerOpen(false)} title="จัดการรายการอุปกรณ์ทั้งหมด">
+                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+                    {equipment.sort((a, b) => a.name.localeCompare(b.name)).map(item => (
+                        <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 border p-3 rounded-lg hover:bg-gray-50">
+                            <div className="flex-1 min-w-[200px]">
+                                <p className="font-medium">{item.name}</p>
+                                <p className="text-sm text-gray-500">{formatCurrency(item.price)} / {item.unit}</p>
+                            </div>
+                            <div className="flex items-center gap-1 sm:gap-2">
+                                <button onClick={() => openModalForEdit(item)} title="แก้ไขอุปกรณ์" className="p-2 text-yellow-600 hover:text-yellow-800 hover:bg-yellow-100 rounded-full transition-colors"><PencilIcon className="h-5 w-5"/></button>
+                                <button onClick={() => setItemToDelete(item)} title="ลบอุปกรณ์นี้" className="p-2 text-red-600 hover:text-red-800 hover:bg-red-100 rounded-full transition-colors"><TrashIcon className="h-5 w-5"/></button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </Modal>
 
             <Modal isOpen={!!itemToDelete} onClose={() => setItemToDelete(null)} title="ยืนยันการลบ">
