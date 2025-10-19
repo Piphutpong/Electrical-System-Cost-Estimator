@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { EquipmentItem, QuotationItem, Project, ProjectData } from './types';
 import { INITIAL_EQUIPMENT_ITEMS, DEPARTMENTS } from './constants';
@@ -121,7 +122,7 @@ const App: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<EquipmentItem | null>(null);
     const [itemToDelete, setItemToDelete] = useState<EquipmentItem | null>(null);
-    const [selectedDepartment, setSelectedDepartment] = useState<string>('');
+    const [selectedDepartment, setSelectedDepartment] = useState<string>(DEPARTMENTS[2]);
     const [selectedItemId, setSelectedItemId] = useState<string>('');
     const [currentQuantity, setCurrentQuantity] = useState<string>('1');
     const [isEquipmentManagerOpen, setIsEquipmentManagerOpen] = useState(false);
@@ -237,10 +238,30 @@ const App: React.FC = () => {
             department: e.department || DEPARTMENTS[2] // Default to 'แผนกแรงต่ำ' if missing
         }));
         setEquipment(sortEquipmentList(migratedEquipment));
-        setQuotation(data.quotation || {});
+        
+        // FIX: Sanitize quotation data from localStorage. Old data might contain strings
+        // instead of numbers, which causes arithmetic errors in calculations.
+        const sanitizedQuotation: Record<string, number> = {};
+        if (data.quotation) {
+            for (const [key, value] of Object.entries(data.quotation)) {
+                const numValue = Number(value);
+                if (!isNaN(numValue) && numValue > 0) {
+                    sanitizedQuotation[key] = numValue;
+                }
+            }
+        }
+        setQuotation(sanitizedQuotation);
         
         if (data.profitMargins) {
-            setProfitMargins(data.profitMargins);
+            // FIX: Sanitize profit margins from localStorage for the same reason as quotation.
+            const sanitizedProfitMargins: Record<string, number> = {};
+             for (const [key, value] of Object.entries(data.profitMargins)) {
+                const numValue = Number(value);
+                if (!isNaN(numValue)) {
+                    sanitizedProfitMargins[key] = numValue;
+                }
+            }
+            setProfitMargins(sanitizedProfitMargins);
         } else if (typeof data.profitMargin === 'number') {
             // Backward compatibility for old projects with single profit margin
             const newProfitMargins: Record<string, number> = {};
