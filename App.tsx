@@ -1,5 +1,9 @@
 
 
+
+
+
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { EquipmentItem, QuotationItem, Project, ProjectData } from './types';
 import { INITIAL_EQUIPMENT_ITEMS, DEPARTMENTS } from './constants';
@@ -244,6 +248,7 @@ const App: React.FC = () => {
         const sanitizedQuotation: Record<string, number> = {};
         if (data.quotation) {
             for (const [key, value] of Object.entries(data.quotation)) {
+                // FIX: The value from localStorage can be of an unknown type. Safely convert to number.
                 const numValue = Number(value);
                 if (!isNaN(numValue) && numValue > 0) {
                     sanitizedQuotation[key] = numValue;
@@ -256,6 +261,7 @@ const App: React.FC = () => {
             // FIX: Sanitize profit margins from localStorage for the same reason as quotation.
             const sanitizedProfitMargins: Record<string, number> = {};
              for (const [key, value] of Object.entries(data.profitMargins)) {
+                // FIX: The value from localStorage can be of an unknown type. Safely convert to number.
                 const numValue = Number(value);
                 if (!isNaN(numValue)) {
                     sanitizedProfitMargins[key] = numValue;
@@ -718,6 +724,10 @@ const App: React.FC = () => {
                                         const itemsInDep = quotationItems.filter(qi => qi.item.department === dep);
                                         const departmentSubtotal = itemsInDep.reduce((total, { item, quantity }) => total + (item.price * quantity), 0);
                                         const isCollapsed = collapsedDepartments.has(dep);
+                                        const departmentProfitMargin = profitMargins[dep] || 0;
+                                        const departmentProfitAmount = departmentSubtotal * (departmentProfitMargin / 100);
+                                        const hasProfit = departmentProfitMargin > 0;
+
                                         return (
                                             <React.Fragment key={dep}>
                                                 <tr 
@@ -751,11 +761,22 @@ const App: React.FC = () => {
                                                         </td>
                                                     </tr>
                                                 ))}
-                                                <tr className="bg-slate-50 border-b-2 border-slate-300">
+                                                <tr className={`bg-slate-50 ${!hasProfit || isCollapsed ? 'border-b-2 border-slate-300' : 'border-b border-slate-200'}`}>
                                                     <td colSpan={3} className="p-2 text-right font-semibold text-slate-600">รวมยอด {dep}</td>
                                                     <td className="p-2 text-right font-mono font-bold text-slate-800">{formatCurrency(departmentSubtotal)}</td>
                                                     <td></td>
                                                 </tr>
+                                                {hasProfit && !isCollapsed && (
+                                                    <tr className="bg-slate-50 border-b-2 border-slate-300">
+                                                        <td colSpan={3} className="pt-1 pb-2 px-2 text-right font-semibold text-indigo-600">
+                                                            กำไร ({departmentProfitMargin}%)
+                                                        </td>
+                                                        <td className="pt-1 pb-2 px-2 text-right font-mono font-bold text-indigo-800">
+                                                            {formatCurrency(departmentProfitAmount)}
+                                                        </td>
+                                                        <td></td>
+                                                    </tr>
+                                                )}
                                             </React.Fragment>
                                         );
                                     })
