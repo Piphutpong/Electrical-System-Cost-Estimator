@@ -14,20 +14,85 @@
         font-family: 'Sarabun', sans-serif;
       }
       @media print {
+        @page {
+          size: A4;
+          margin: 1.5cm;
+        }
+
         body {
           -webkit-print-color-adjust: exact;
           print-color-adjust: exact;
-          background-color: white;
+          background: white !important;
+          font-size: 10pt;
+          color: black;
         }
+        
         .print\:hidden {
           display: none !important;
         }
+
         main#quotation-view {
           box-shadow: none !important;
           margin: 0 !important;
+          padding: 0 !important;
           border: none !important;
           width: 100% !important;
           max-width: 100% !important;
+          border-radius: 0 !important;
+        }
+
+        main#quotation-view header, 
+        main#quotation-view section {
+            page-break-inside: avoid;
+        }
+        
+        main#quotation-view h1 { font-size: 1.8rem !important; }
+        main#quotation-view h2 { font-size: 1.6rem !important; }
+        
+        main#quotation-view .bg-gray-50 {
+            background-color: #F9FAFB !important;
+        }
+
+        main#quotation-view table {
+          width: 100% !important;
+          border-collapse: collapse !important;
+          page-break-inside: auto;
+        }
+        main#quotation-view thead {
+          display: table-header-group; /* Repeat table head on each page */
+          background-color: #E5E7EB !important;
+        }
+        main#quotation-view tbody tr {
+          page-break-inside: avoid;
+          page-break-after: auto;
+        }
+        main#quotation-view th, main#quotation-view td {
+          padding: 6px 8px !important;
+          border: 1px solid #dee2e6; /* A light grey border */
+          vertical-align: top;
+        }
+        main#quotation-view th {
+          font-weight: 600; /* Sarabun semibold */
+        }
+        
+        main#quotation-view table th:nth-of-type(1), main#quotation-view table td:nth-of-type(1) { width: 5%; text-align: center; }
+        main#quotation-view table th:nth-of-type(2), main#quotation-view table td:nth-of-type(2) { width: 12%; }
+        main#quotation-view table th:nth-of-type(3), main#quotation-view table td:nth-of-type(3) { width: 41%; }
+        main#quotation-view table th:nth-of-type(4), main#quotation-view table td:nth-of-type(4) { width: 13%; text-align: right;}
+        main#quotation-view table th:nth-of-type(5), main#quotation-view table td:nth-of-type(5) { width: 14%; text-align: right;}
+        main#quotation-view table th:nth-of-type(6), main#quotation-view table td:nth-of-type(6) { width: 15%; text-align: right;}
+
+        main#quotation-view .font-mono {
+            font-family: 'Sarabun', monospace;
+        }
+        main#quotation-view .text-right { text-align: right !important; }
+        main#quotation-view .text-center { text-align: center !important; }
+        
+        main#quotation-view tr.bg-gray-100 { background-color: #F3F4F6 !important; }
+        main#quotation-view tr.bg-gray-200 { background-color: #E5E7EB !important; }
+        
+        main#quotation-view section.flex.justify-end {
+          page-break-inside: avoid !important;
         }
       }
     </style>
