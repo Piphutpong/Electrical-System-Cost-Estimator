@@ -573,6 +573,7 @@ const App: React.FC = () => {
             items: {},
         };
         setJobs(prev => [...prev, newJob]);
+        setSelectedJobId(newJob.id);
     };
     
     const handleStartEditProfit = (job: Job) => {
@@ -1180,14 +1181,16 @@ const App: React.FC = () => {
                       </section>
                       
                       <section className="mt-8 flex justify-end">
-                          <div className="w-full max-w-sm space-y-2 text-sm">
-                              <div className="flex justify-between font-bold"><span className="">ยอดรวม:</span><span className="font-mono">{formatCurrency(totalBeforeVat)}</span></div>
-                              <div className="flex justify-between"><span className="text-gray-600">ภาษีมูลค่าเพิ่ม (7%):</span><span className="font-mono">{formatCurrency(vatAmount)}</span></div>
-                              <div className="flex justify-between items-baseline text-xl font-bold text-blue-700 mt-2 pt-2 border-t-2 border-blue-300">
-                                  <span>ยอดรวมสุทธิ:</span>
-                                  <span className="text-2xl font-mono">{formatCurrency(grandTotal)}</span>
-                              </div>
-                          </div>
+                           <div className="w-full max-w-sm space-y-2 text-sm">
+                                <div className="flex justify-between"><span className="text-gray-600">ราคาทุน (ตามเงื่อนไข):</span><span className="font-mono">{formatCurrency(subTotal)}</span></div>
+                                <div className="flex justify-between"><span className="text-gray-600">กำไรรวม:</span><span className="font-mono">{formatCurrency(profitAmount)}</span></div>
+                                <div className="flex justify-between font-bold pt-1 border-t border-gray-200"><span className="">รวมก่อน VAT:</span><span className="font-mono">{formatCurrency(totalBeforeVat)}</span></div>
+                                <div className="flex justify-between"><span className="text-gray-600">ภาษีมูลค่าเพิ่ม (7%):</span><span className="font-mono">{formatCurrency(vatAmount)}</span></div>
+                                <div className="flex justify-between items-baseline text-xl font-bold text-blue-700 mt-2 pt-2 border-t-2 border-blue-300">
+                                    <span>ยอดรวมสุทธิ:</span>
+                                    <span className="text-2xl font-mono">{formatCurrency(grandTotal)}</span>
+                                </div>
+                            </div>
                       </section>
 
                       <footer className="print:hidden mt-12 flex justify-center gap-4">
