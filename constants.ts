@@ -1,4 +1,5 @@
 
+
 import type { EquipmentItem, InvestmentType, AssetType } from './types';
 
 export const DEPARTMENTS = [
@@ -25,7 +26,12 @@ export const INITIAL_EQUIPMENT_ITEMS: EquipmentItem[] = [
   { id: '10', code: '10024', name: 'R2DE', price: 1214.00, unit: 'ชุด', department: 'แผนกแรงต่ำ' },
   { id: '11', code: '10001', name: 'R4 0-5 Deg.', price: 849.00, unit: 'ชุด', department: 'แผนกแรงต่ำ' },
   { id: '12', code: '10002', name: 'R4 5-60 Deg.', price: 984.00, unit: 'ชุด', department: 'แผนกแรงต่ำ' },
-  { id: '13', code: '10052', name: 'R4DDE', price: 4392.00, unit: 'ชุด', department: 'แผนกแรงต่ำ' },
+  // Parent Item
+  { id: '13', code: '', name: 'R4DDE', price: 4392.00, unit: 'ชุด', department: 'แผนกแรงต่ำ' },
+  // Child Items
+  { id: '13-1', code: '10052-A', name: 'R4DDE ON LT. 50sq.mm.', price: 4392.00, unit: 'ชุด', department: 'แผนกแรงต่ำ', parentId: '13' },
+  { id: '13-2', code: '10052-B', name: 'R4DDE ON LT. 95sq.mm.', price: 4392.00, unit: 'ชุด', department: 'แผนกแรงต่ำ', parentId: '13' },
+  
   { id: '14', code: '10004', name: 'R4DE', price: 2268.00, unit: 'ชุด', department: 'แผนกแรงต่ำ' },
   { id: '15', code: '10031', name: 'ClevisTangent', price: 393.00, unit: 'ชุด', department: 'แผนกแรงต่ำ' },
   { id: '16', code: '10071', name: 'ClevisDDE', price: 1381.00, unit: 'ชุด', department: 'แผนกแรงต่ำ' },

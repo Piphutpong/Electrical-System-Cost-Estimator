@@ -1,8 +1,9 @@
 
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { EquipmentItem, QuotationItem, Project, ProjectData, Job, InvestmentType, AssetType } from './types';
 import { INITIAL_EQUIPMENT_ITEMS, DEPARTMENTS, INVESTMENT_TYPES, ASSET_TYPES } from './constants';
-import { PlusIcon, TrashIcon, PencilIcon, SaveIcon, FolderOpenIcon, ArrowUpTrayIcon, ArrowPathIcon, DocumentArrowDownIcon, ChevronUpIcon, ChevronDownIcon, EyeIcon, PrinterIcon } from './components/icons';
+import { PlusIcon, TrashIcon, PencilIcon, SaveIcon, FolderOpenIcon, ArrowUpTrayIcon, ArrowPathIcon, DocumentArrowDownIcon, ChevronUpIcon, ChevronDownIcon, EyeIcon, PrinterIcon, ListBulletIcon, DocumentTextIcon } from './components/icons';
 import Modal from './components/Modal';
 
 declare global {
@@ -184,6 +185,85 @@ const JobFormModal: React.FC<{
     );
 };
 
+const BreakdownModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onSave: (jobId: string, parentItemId: string, subQuantities: Record<string, number>) => void;
+    parentItem: EquipmentItem;
+    totalQuantity: number;
+    childItems: EquipmentItem[];
+    jobId: string;
+}> = ({ isOpen, onClose, onSave, parentItem, totalQuantity, childItems, jobId }) => {
+    const [subQuantities, setSubQuantities] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        if(isOpen) {
+            setSubQuantities({}); // Reset on open
+        }
+    }, [isOpen]);
+
+    const currentTotal = useMemo(() => {
+        return Object.values(subQuantities).reduce((sum, qty) => sum + (parseInt(qty, 10) || 0), 0);
+    }, [subQuantities]);
+
+    const handleQuantityChange = (itemId: string, value: string) => {
+        setSubQuantities(prev => ({ ...prev, [itemId]: value }));
+    };
+
+    const handleSave = () => {
+        if (currentTotal !== totalQuantity) {
+            alert(`จำนวนรวมของรายการย่อย (${currentTotal}) ไม่เท่ากับจำนวนรายการหลัก (${totalQuantity}) กรุณาตรวจสอบ`);
+            return;
+        }
+        const finalQuantities = Object.entries(subQuantities).reduce((acc, [itemId, qtyStr]) => {
+            const qty = parseInt(qtyStr, 10);
+            if (!isNaN(qty) && qty > 0) {
+                acc[itemId] = qty;
+            }
+            return acc;
+        }, {} as Record<string, number>);
+
+        onSave(jobId, parentItem.id, finalQuantities);
+        onClose();
+    };
+    
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title={`ระบุรายละเอียดสำหรับ ${parentItem.name}`}>
+            <div className="space-y-4">
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-center">
+                    <p className="font-semibold text-blue-800">จำนวนทั้งหมด: {totalQuantity} {parentItem.unit}</p>
+                </div>
+                <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-2">
+                    {childItems.map(child => (
+                        <div key={child.id} className="grid grid-cols-3 items-center gap-3">
+                            <label htmlFor={`breakdown-${child.id}`} className="col-span-2 text-sm font-medium text-gray-700">
+                                {child.name}
+                            </label>
+                            <input
+                                id={`breakdown-${child.id}`}
+                                type="number"
+                                min="0"
+                                value={subQuantities[child.id] || ''}
+                                onChange={e => handleQuantityChange(child.id, e.target.value)}
+                                className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-center"
+                            />
+                        </div>
+                    ))}
+                </div>
+
+                <div className={`p-3 rounded-lg text-center font-semibold ${currentTotal > totalQuantity ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-green-100 text-green-800 border border-green-200'}`}>
+                    จำนวนที่ระบุ: {currentTotal} / {totalQuantity}
+                </div>
+
+                <div className="flex justify-end space-x-2 pt-4">
+                    <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">ยกเลิก</button>
+                    <button type="button" onClick={handleSave} disabled={currentTotal !== totalQuantity} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed">บันทึก</button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
 
 const LOCAL_STORAGE_KEY = 'electrical-estimator-projects-store';
 
@@ -209,7 +289,7 @@ const App: React.FC = () => {
     const [newProjectName, setNewProjectName] = useState('');
 
     // UI state
-    const [view, setView] = useState<'workspace' | 'quotation'>('workspace');
+    const [view, setView] = useState<'workspace' | 'quotation' | 'summary'>('workspace');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isJobModalOpen, setIsJobModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<EquipmentItem | null>(null);
@@ -223,6 +303,8 @@ const App: React.FC = () => {
     const [collapsedJobs, setCollapsedJobs] = useState<Set<string>>(new Set());
     const [editingProfitJobId, setEditingProfitJobId] = useState<string | null>(null);
     const [editingProfitValue, setEditingProfitValue] = useState<string>('');
+    const [isBreakdownModalOpen, setIsBreakdownModalOpen] = useState(false);
+    const [itemToBreakdown, setItemToBreakdown] = useState<{jobId: string; itemId: string} | null>(null);
     
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -262,7 +344,8 @@ const App: React.FC = () => {
 
     const filteredEquipment = useMemo(() => {
         if (!selectedDepartment) return [];
-        return equipment.filter(item => item.department === selectedDepartment);
+        // Show only items that are not children of another item in the selector
+        return equipment.filter(item => item.department === selectedDepartment && !item.parentId);
     }, [selectedDepartment, equipment]);
 
     const filteredJobs = useMemo(() => {
@@ -358,6 +441,79 @@ const App: React.FC = () => {
         return profits;
     }, [jobs, jobCalculations.totalsByJobId]);
 
+    const jobBasedSummary = useMemo(() => {
+        const summary: Record<string, { job: Job; items: QuotationItem[] }[]> = {};
+
+        departmentsInView.forEach(dep => {
+            summary[dep] = [];
+            const jobsInDep = jobs.filter(j => j.department === dep);
+
+            jobsInDep.forEach(job => {
+                const itemsInJob = Object.entries(job.items)
+                    .map(([itemId, quantity]) => {
+                        const item = equipment.find(e => e.id === itemId);
+                        return item ? { item, quantity: Number(quantity) } : null;
+                    })
+                    .filter((i): i is QuotationItem => !!i)
+                    .sort((a, b) => a.item.name.localeCompare(b.item.name, 'th'));
+                
+                if (itemsInJob.length > 0) {
+                     summary[dep].push({ job, items: itemsInJob });
+                }
+            });
+        });
+        return summary;
+    }, [jobs, equipment, departmentsInView]);
+
+    const quotationData = useMemo(() => {
+        const dataByDept: Record<string, {
+            chargeable: Map<string, { item: EquipmentItem; quantity: number }>;
+            nonChargeable: Map<string, { item: EquipmentItem; quantity: number }>;
+        }> = {};
+
+        departmentsInView.forEach(dep => {
+            dataByDept[dep] = { chargeable: new Map(), nonChargeable: new Map() };
+        });
+
+        jobs.forEach(job => {
+            if (!dataByDept[job.department]) return;
+            const isNoChargeJob = job.investment === 'กฟภ.';
+            const targetMap = isNoChargeJob ? dataByDept[job.department].nonChargeable : dataByDept[job.department].chargeable;
+
+            Object.entries(job.items).forEach(([itemId, quantity]) => {
+                const item = equipment.find(e => e.id === itemId);
+                if (!item) return;
+
+                const numQuantity = Number(quantity);
+                let finalItem = item;
+                let finalItemId = item.id;
+
+                if (item.parentId) {
+                    const parent = equipment.find(e => e.id === item.parentId);
+                    if (parent) {
+                        finalItem = parent;
+                        finalItemId = parent.id;
+                    }
+                }
+
+                if (targetMap.has(finalItemId)) {
+                    targetMap.get(finalItemId)!.quantity += numQuantity;
+                } else {
+                    targetMap.set(finalItemId, { item: finalItem, quantity: numQuantity });
+                }
+            });
+        });
+
+        const finalData: Record<string, { chargeable: QuotationItem[], nonChargeable: QuotationItem[] }> = {};
+        for (const dep in dataByDept) {
+            finalData[dep] = {
+                chargeable: Array.from(dataByDept[dep].chargeable.values()).sort((a, b) => (a.item.code || '').localeCompare(b.item.code || '', 'th')),
+                nonChargeable: Array.from(dataByDept[dep].nonChargeable.values()).sort((a, b) => (a.item.code || '').localeCompare(b.item.code || '', 'th')),
+            };
+        }
+        return finalData;
+    }, [jobs, equipment, departmentsInView]);
+
     const totalBeforeVat = useMemo(() => subTotal + profitAmount, [subTotal, profitAmount]);
     const vatAmount = useMemo(() => totalBeforeVat * 0.07, [totalBeforeVat]);
     const grandTotal = useMemo(() => totalBeforeVat + vatAmount, [totalBeforeVat, vatAmount]);
@@ -385,7 +541,8 @@ const App: React.FC = () => {
             name: e.name,
             price: e.price,
             unit: e.unit,
-            department: e.department || DEPARTMENTS[2]
+            department: e.department || DEPARTMENTS[2],
+            parentId: e.parentId || undefined,
         }));
         setEquipment(sortEquipmentList(migratedEquipment));
         
@@ -649,6 +806,32 @@ const App: React.FC = () => {
             return job;
         }));
     };
+    
+    const handleOpenBreakdownModal = (jobId: string, itemId: string) => {
+        setItemToBreakdown({ jobId, itemId });
+        setIsBreakdownModalOpen(true);
+    };
+
+    const handleSaveBreakdown = (jobId: string, parentItemId: string, subQuantities: Record<string, number>) => {
+        setJobs(prevJobs => prevJobs.map(job => {
+            if (job.id === jobId) {
+                const newItems = { ...job.items };
+                delete newItems[parentItemId]; // Remove parent item
+                
+                for (const [subItemId, quantity] of Object.entries(subQuantities)) {
+                    if (quantity > 0) {
+                        newItems[subItemId] = (newItems[subItemId] || 0) + quantity; // Add child item quantities
+                    }
+                }
+                
+                return { ...job, items: newItems };
+            }
+            return job;
+        }));
+
+        setItemToBreakdown(null);
+        setIsBreakdownModalOpen(false);
+    };
 
     // --- Equipment CRUD ---
     const openModalForEdit = (item: EquipmentItem) => {
@@ -861,6 +1044,7 @@ const App: React.FC = () => {
                                 <span className="text-base font-normal text-gray-500 hidden md:inline-block ml-2 truncate max-w-xs align-bottom"> - {currentProjectName}</span>
                             </h1>
                             <div className="flex items-center space-x-1 md:space-x-2 flex-shrink-0">
+                               <button onClick={() => setView('summary')} title="สรุปรายการอุปกรณ์" className="flex items-center gap-2 px-3 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition-colors"><DocumentTextIcon className="h-5 w-5"/><span className="hidden md:inline">สรุป</span></button>
                                <button onClick={() => setView('quotation')} title="ดูตัวอย่างใบเสนอราคา" className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"><EyeIcon className="h-5 w-5"/><span className="hidden md:inline">ตัวอย่าง</span></button>
                                <button onClick={handleSaveCurrentProject} title="บันทึกโปรเจคปัจจุบัน" className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"><SaveIcon className="h-5 w-5"/><span className="hidden md:inline">บันทึก</span></button>
                                <button onClick={() => setIsProjectManagerOpen(true)} title="จัดการโปรเจค" className="flex items-center gap-2 px-3 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"><FolderOpenIcon className="h-5 w-5"/><span className="hidden md:inline">โปรเจค</span></button>
@@ -876,7 +1060,7 @@ const App: React.FC = () => {
                 <main className="container mx-auto p-2 sm:p-4 flex flex-col gap-6">
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2 bg-white p-4 sm:p-6 rounded-lg shadow-md">
-                            <h2 className="text-xl font-semibold mb-4 border-b pb-2">สร้างใบเสนอราคา</h2>
+                            <h2 className="text-xl font-semibold mb-4 border-b pb-2">ประมาณการค่าใช้จ่าย</h2>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 items-end gap-3 mb-4 p-4 border rounded-lg bg-gray-50">
                                 <div className="w-full">
                                     <label htmlFor="department-select" className="block text-sm font-medium text-gray-700">1. เลือกแผนก</label>
@@ -899,7 +1083,7 @@ const App: React.FC = () => {
                                   <label htmlFor="equipment-select" className="block text-sm font-medium text-gray-700">3. เลือกอุปกรณ์</label>
                                   <select id="equipment-select" value={selectedItemId} onChange={e => setSelectedItemId(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 disabled:bg-gray-200" disabled={!selectedDepartment}>
                                     <option value="" disabled>--- กรุณาเลือก ---</option>
-                                    {filteredEquipment.map(item => (<option key={item.id} value={item.id}>({item.code}) {item.name}</option>))}
+                                    {filteredEquipment.map(item => (<option key={item.id} value={item.id}>{item.code ? `(${item.code}) ` : ''}{item.name}</option>))}
                                   </select>
                                 </div>
                                 <div className="flex-shrink-0"><label htmlFor="quantity-input" className="block text-sm font-medium text-gray-700">4. จำนวน</label><input id="quantity-input" type="number" min="1" value={currentQuantity} onChange={e => setCurrentQuantity(e.target.value)} className="mt-1 w-24 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" /></div>
@@ -915,7 +1099,7 @@ const App: React.FC = () => {
                                         <div className="md:table-cell p-2 w-40 text-center">จำนวน</div>
                                         <div className="md:table-cell p-2 w-32 text-right">ราคา/หน่วย</div>
                                         <div className="md:table-cell p-2 w-32 text-right">รวม</div>
-                                        <div className="md:table-cell p-2 w-12 text-center">ลบ</div>
+                                        <div className="md:table-cell p-2 w-12 text-center">...</div>
                                     </div>
                                 </div>
                                 <div className="md:table-row-group">
@@ -969,12 +1153,14 @@ const App: React.FC = () => {
                                                             </div>
                                                             {!isJobCollapsed && (
                                                             <>
-                                                                {itemsInJob.map(({ item, quantity }) => (
-                                                                    <div key={item!.id} className={`border-b md:table-row hover:bg-gray-50 ${isNoChargeJob ? 'opacity-60' : ''}`}>
-                                                                        <div className="p-2 md:table-cell text-sm text-gray-600 font-mono hidden md:block">{item!.code}</div>
+                                                                {itemsInJob.map(({ item, quantity }) => {
+                                                                    const isParent = equipment.some(e => e.parentId === item!.id);
+                                                                    return (
+                                                                    <div key={item!.id} className={`border-b md:table-row hover:bg-gray-50 ${isNoChargeJob ? 'opacity-60' : ''} ${item?.parentId ? 'bg-gray-50' : ''}`}>
+                                                                        <div className="p-2 md:table-cell text-sm text-gray-600 font-mono hidden md:block">{item!.code || '-'}</div>
                                                                         <div className="p-2 font-medium md:table-cell">
-                                                                            <span className="font-mono text-xs text-gray-500 block md:hidden">รหัส: {item!.code}</span>
-                                                                            {item!.name}
+                                                                            <span className="font-mono text-xs text-gray-500 block md:hidden">รหัส: {item!.code || '-'}</span>
+                                                                            <span className={`${item?.parentId ? 'pl-4' : ''}`}>{item!.name}</span>
                                                                         </div>
                                                                         <div className="p-2 md:table-cell">
                                                                             <div className="flex items-center justify-between md:justify-center gap-1">
@@ -988,12 +1174,20 @@ const App: React.FC = () => {
                                                                         <div className="p-2 text-right font-mono md:table-cell"><span className="md:hidden text-gray-500">ราคา/หน่วย: </span>{formatCurrency(item!.price)}</div>
                                                                         <div className="p-2 text-right font-mono font-semibold md:table-cell"><span className="md:hidden text-gray-500">รวม: </span>{formatCurrency(item!.price * Number(quantity))}</div>
                                                                         <div className="p-2 text-center md:table-cell">
-                                                                            <button onClick={() => handleRemoveFromJob(job.id, item!.id)} title="ลบรายการนี้" className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full w-full md:w-auto mt-2 md:mt-0 border md:border-0">
-                                                                                <TrashIcon className="h-5 w-5 mx-auto" />
-                                                                            </button>
+                                                                            <div className="flex justify-center items-center gap-1">
+                                                                                {isParent && (
+                                                                                    <button onClick={() => handleOpenBreakdownModal(job.id, item!.id)} title="ระบุรายละเอียด" className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-100 rounded-full">
+                                                                                        <ListBulletIcon className="h-5 w-5" />
+                                                                                    </button>
+                                                                                )}
+                                                                                <button onClick={() => handleRemoveFromJob(job.id, item!.id)} title="ลบรายการนี้" className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full">
+                                                                                    <TrashIcon className="h-5 w-5" />
+                                                                                </button>
+                                                                            </div>
                                                                         </div>
                                                                     </div>
-                                                                ))}
+                                                                    );
+                                                                })}
                                                                 {job.investment === 'ผู้ใช้ไฟ' && job.asset === 'ผู้ใช้ไฟ' && ( <> <div className="bg-slate-100 md:table-row"><div className="md:table-cell md:col-span-4 p-2 text-right font-semibold">ราคาทุน</div><div className="md:table-cell p-2 text-right font-mono">{formatCurrency(jobCalc.baseCost)}</div><div className="md:table-cell"></div></div><div className="bg-slate-100 md:table-row"><div className="md:table-cell md:col-span-4 p-2 text-right font-semibold text-green-700">กำไร ({job.profitMargin || 0}%)</div><div className="md:table-cell p-2 text-right font-mono text-green-700">{formatCurrency(jobCalc.profit)}</div><div className="md:table-cell"></div></div></>)}
                                                                 {job.investment === 'ผู้ใช้ไฟสมทบ 50%' && (<div className="bg-slate-100 md:table-row"><div className="md:table-cell md:col-span-4 p-2 text-right font-semibold">ราคาทุน (100%)</div><div className="md:table-cell p-2 text-right font-mono">{formatCurrency(jobCalc.baseCost)}</div><div className="md:table-cell"></div></div>)}
                                                             </>
@@ -1104,33 +1298,9 @@ const App: React.FC = () => {
                                   {(() => {
                                       let runningItemNumber = 0;
                                       return departmentsInView.map(dep => {
-                                        const jobsInDep = jobs.filter(j => j.department === dep);
-                                        if (jobsInDep.length === 0) return null;
-
-                                        const chargeableItems = new Map<string, { item: EquipmentItem; quantity: number }>();
-                                        const nonChargeableItems = new Map<string, { item: EquipmentItem; quantity: number }>();
-
-                                        jobsInDep.forEach(job => {
-                                          const isNoChargeJob = job.investment === 'กฟภ.';
-                                          const targetMap = isNoChargeJob ? nonChargeableItems : chargeableItems;
-
-                                          Object.entries(job.items).forEach(([itemId, quantity]) => {
-                                            const item = equipment.find(e => e.id === itemId);
-                                            if (item) {
-                                              const numQuantity = Number(quantity);
-                                              if (targetMap.has(itemId)) {
-                                                targetMap.get(itemId)!.quantity += numQuantity;
-                                              } else {
-                                                targetMap.set(itemId, { item, quantity: numQuantity });
-                                              }
-                                            }
-                                          });
-                                        });
-
-                                        const sortedChargeable = Array.from(chargeableItems.values()).sort((a, b) => a.item.code.localeCompare(b.item.code));
-                                        const sortedNonChargeable = Array.from(nonChargeableItems.values()).sort((a, b) => a.item.code.localeCompare(b.item.code));
-
-                                        if (sortedChargeable.length === 0 && sortedNonChargeable.length === 0) {
+                                        const { chargeable, nonChargeable } = quotationData[dep] || { chargeable: [], nonChargeable: [] };
+                                        
+                                        if (chargeable.length === 0 && nonChargeable.length === 0) {
                                           return null;
                                         }
                                         
@@ -1139,12 +1309,12 @@ const App: React.FC = () => {
                                             <tr className="bg-gray-100 font-bold">
                                               <td colSpan={6} className="p-2 border-t-2 border-b border-gray-300">{dep}</td>
                                             </tr>
-                                            {sortedChargeable.map(({ item, quantity }) => {
+                                            {chargeable.map(({ item, quantity }) => {
                                               runningItemNumber++;
                                               return (
                                                 <tr key={`${item.id}-chargeable`} className="border-b border-gray-100">
                                                   <td className="p-2 text-center">{runningItemNumber}</td>
-                                                  <td className="p-2 font-mono text-xs">{item.code}</td>
+                                                  <td className="p-2 font-mono text-xs">{item.code || '-'}</td>
                                                   <td className="p-2 pl-4">{item.name}</td>
                                                   <td className="p-2 text-right">{quantity} {item.unit}</td>
                                                   <td className="p-2 text-right font-mono">{formatCurrency(item.price)}</td>
@@ -1152,17 +1322,17 @@ const App: React.FC = () => {
                                                 </tr>
                                               );
                                             })}
-                                            {sortedNonChargeable.length > 0 && (
+                                            {nonChargeable.length > 0 && (
                                               <>
                                                 <tr className="font-semibold bg-gray-50">
                                                   <td colSpan={6} className="p-2 pl-4 text-gray-700">รายการทรัพย์สิน กฟภ. (ไม่คิดค่าใช้จ่าย)</td>
                                                 </tr>
-                                                {sortedNonChargeable.map(({ item, quantity }) => {
+                                                {nonChargeable.map(({ item, quantity }) => {
                                                   runningItemNumber++;
                                                   return (
                                                     <tr key={`${item.id}-nonchargeable`} className="border-b border-gray-100 text-gray-400">
                                                       <td className="p-2 text-center">{runningItemNumber}</td>
-                                                      <td className="p-2 font-mono text-xs">{item.code}</td>
+                                                      <td className="p-2 font-mono text-xs">{item.code || '-'}</td>
                                                       <td className="p-2 pl-4">{item.name}</td>
                                                       <td className="p-2 text-right">{quantity} {item.unit}</td>
                                                       <td className="p-2 text-right font-mono">-</td>
@@ -1202,9 +1372,105 @@ const App: React.FC = () => {
                       </footer>
                   </main>
                 )}
+                
+                {view === 'summary' && (
+                  <main className="container mx-auto p-4 md:p-8 bg-white md:my-8 md:shadow-lg md:rounded-lg" id="summary-view">
+                      <header className="flex flex-col sm:flex-row justify-between items-start mb-8 pb-4 border-b">
+                          <div>
+                              <h1 className="text-2xl md:text-3xl font-bold text-gray-900">สรุปรายการอุปกรณ์ (แยกตามประเภทงาน)</h1>
+                              <p className="text-sm text-gray-600">โครงการ: {clientInfo.project || '-'}</p>
+                          </div>
+                          <div className="text-left sm:text-right mt-2 sm:mt-0">
+                               <p className="text-sm text-gray-600">วันที่: {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                          </div>
+                      </header>
+
+                      <section>
+                          <table className="w-full text-sm">
+                              <thead>
+                                  <tr className="bg-gray-200">
+                                      <th className="p-2 text-left w-12">#</th>
+                                      <th className="p-2 text-left">รหัสพัสดุ</th>
+                                      <th className="p-2 text-left">รายการ</th>
+                                      <th className="p-2 text-right">จำนวน</th>
+                                      <th className="p-2 text-left">หน่วย</th>
+                                  </tr>
+                              </thead>
+                              <tbody>
+                                  {(() => {
+                                      let runningItemNumber = 0;
+                                      const departmentsWithJobs = departmentsInView.filter(dep => jobBasedSummary[dep] && jobBasedSummary[dep].length > 0);
+                                      
+                                      if (departmentsWithJobs.length === 0) {
+                                        return (
+                                          <tr>
+                                            <td colSpan={5} className="text-center text-gray-500 py-10">ไม่มีอุปกรณ์ในโครงการนี้</td>
+                                          </tr>
+                                        );
+                                      }
+
+                                      return departmentsWithJobs.map(dep => (
+                                          <React.Fragment key={dep}>
+                                            <tr className="bg-gray-100 font-bold">
+                                              <td colSpan={5} className="p-2 border-t-2 border-b border-gray-300">{dep}</td>
+                                            </tr>
+                                            {jobBasedSummary[dep].map(({ job, items }) => (
+                                                <React.Fragment key={job.id}>
+                                                    <tr className="bg-gray-50 font-semibold">
+                                                        <td colSpan={5} className="p-2 pl-4 text-gray-800">{job.name} <span className="font-normal text-xs">({job.investment} / {job.asset})</span></td>
+                                                    </tr>
+                                                    {items.map(({ item, quantity }) => {
+                                                        runningItemNumber++;
+                                                        return (
+                                                            <tr key={item.id} className="border-b border-gray-100">
+                                                                <td className="p-2 text-center">{runningItemNumber}</td>
+                                                                <td className="p-2 font-mono text-xs">{item.code || '-'}</td>
+                                                                <td className="p-2 pl-8">{item.name}</td>
+                                                                <td className="p-2 text-right font-mono">{quantity}</td>
+                                                                <td className="p-2">{item.unit}</td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </React.Fragment>
+                                            ))}
+                                          </React.Fragment>
+                                        ));
+                                  })()}
+                              </tbody>
+                          </table>
+                      </section>
+
+                      <footer className="print:hidden mt-12 flex justify-center gap-4">
+                          <button onClick={() => setView('workspace')} className="px-6 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors">กลับไปแก้ไข</button>
+                          <button onClick={() => window.print()} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                              <PrinterIcon className="h-5 w-5"/>
+                              <span>พิมพ์ / บันทึกเป็น PDF</span>
+                          </button>
+                      </footer>
+                  </main>
+                )}
             </div>
             
             {/* --- Modals --- */}
+            {itemToBreakdown && (() => {
+                const parentItem = equipment.find(e => e.id === itemToBreakdown.itemId);
+                const job = jobs.find(j => j.id === itemToBreakdown.jobId);
+                const totalQuantity = job?.items[itemToBreakdown.itemId];
+                const childItems = equipment.filter(e => e.parentId === itemToBreakdown.itemId);
+
+                if (!parentItem || !job || typeof totalQuantity === 'undefined') return null;
+
+                return <BreakdownModal 
+                    isOpen={isBreakdownModalOpen}
+                    onClose={() => setIsBreakdownModalOpen(false)}
+                    onSave={handleSaveBreakdown}
+                    parentItem={parentItem}
+                    totalQuantity={totalQuantity}
+                    childItems={childItems}
+                    jobId={itemToBreakdown.jobId}
+                />
+            })()}
+
             <JobFormModal isOpen={isJobModalOpen} onClose={() => setIsJobModalOpen(false)} onSave={handleSaveJob} department={selectedDepartment}/>
             <Modal isOpen={isModalOpen} onClose={closeModal} title={editingItem ? 'แก้ไขรายการอุปกรณ์' : 'เพิ่มรายการอุปกรณ์ใหม่'}><EquipmentForm item={editingItem} onSave={handleSaveItem} onCancel={closeModal} /></Modal>
             <Modal isOpen={isEquipmentManagerOpen} onClose={() => setIsEquipmentManagerOpen(false)} title="จัดการรายการอุปกรณ์ทั้งหมด">
@@ -1219,7 +1485,7 @@ const App: React.FC = () => {
                                     <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 border p-3 rounded-lg hover:bg-gray-50 mb-2">
                                         <div className="flex-1 min-w-[200px]">
                                             <p className="font-medium">{item.name}</p>
-                                            <p className="text-sm text-gray-500"><span className="font-mono bg-gray-100 px-1 rounded">{item.code}</span> - {formatCurrency(item.price)} / {item.unit}</p>
+                                            <p className="text-sm text-gray-500"><span className="font-mono bg-gray-100 px-1 rounded">{item.code || '-'}</span> - {formatCurrency(item.price)} / {item.unit}</p>
                                         </div>
                                         <div className="flex items-center gap-1 sm:gap-2">
                                             <button onClick={() => openModalForEdit(item)} title="แก้ไขอุปกรณ์" className="p-2 text-yellow-600 hover:text-yellow-800 hover:bg-yellow-100 rounded-full transition-colors"><PencilIcon className="h-5 w-5"/></button>

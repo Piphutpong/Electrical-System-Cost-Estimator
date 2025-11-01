@@ -5,6 +5,7 @@ export interface EquipmentItem {
   price: number;
   unit: string;
   department: string;
+  parentId?: string; // ID of the parent equipment item
 }
 
 // New types for Job
