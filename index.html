@@ -13,6 +13,25 @@
       body {
         font-family: 'Sarabun', sans-serif;
       }
+      @media print {
+        body {
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+          background-color: white;
+        }
+        .print\:hidden {
+          display: none !important;
+        }
+        main#quotation-view {
+          box-shadow: none !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          border: none !important;
+        }
+        header {
+          display: none !important;
+        }
+      }
     </style>
   <script type="importmap">
 {
