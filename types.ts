@@ -1,3 +1,10 @@
+
+export interface ItemQuantities {
+  install?: number;
+  remove?: number;
+  reuse?: number;
+}
+
 export interface EquipmentItem {
   id: string;
   code: string;
@@ -18,7 +25,7 @@ export interface Job {
   department: string;
   investment: InvestmentType;
   asset: AssetType;
-  items: Record<string, number>; // itemId -> quantity
+  items: Record<string, ItemQuantities>; // itemId -> quantity
   profitMargin?: number; // Optional profit margin in percent for this job
 }
 

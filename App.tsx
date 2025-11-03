@@ -1,7 +1,5 @@
-
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import type { EquipmentItem, QuotationItem, Project, ProjectData, Job, InvestmentType, AssetType } from './types';
+import type { EquipmentItem, QuotationItem, Project, ProjectData, Job, InvestmentType, AssetType, ItemQuantities } from './types';
 import { INITIAL_EQUIPMENT_ITEMS, DEPARTMENTS, INVESTMENT_TYPES, ASSET_TYPES } from './constants';
 import { PlusIcon, TrashIcon, PencilIcon, SaveIcon, FolderOpenIcon, ArrowUpTrayIcon, ArrowPathIcon, DocumentArrowDownIcon, ChevronUpIcon, ChevronDownIcon, EyeIcon, PrinterIcon, ListBulletIcon, DocumentTextIcon } from './components/icons';
 import Modal from './components/Modal';
@@ -34,6 +32,11 @@ const sortEquipmentList = (list: EquipmentItem[]): EquipmentItem[] => {
         // If departments are the same, preserve original order (rely on stable sort)
         return 0;
     });
+};
+
+const hasQuantities = (q?: ItemQuantities): boolean => {
+    if (!q) return false;
+    return (q.install || 0) > 0 || (q.remove || 0) > 0 || (q.reuse || 0) > 0;
 };
 
 
@@ -190,10 +193,10 @@ const BreakdownModal: React.FC<{
     onClose: () => void;
     onSave: (jobId: string, parentItemId: string, subQuantities: Record<string, number>) => void;
     parentItem: EquipmentItem;
-    totalQuantity: number;
+    installQuantity: number;
     childItems: EquipmentItem[];
     jobId: string;
-}> = ({ isOpen, onClose, onSave, parentItem, totalQuantity, childItems, jobId }) => {
+}> = ({ isOpen, onClose, onSave, parentItem, installQuantity, childItems, jobId }) => {
     const [subQuantities, setSubQuantities] = useState<Record<string, string>>({});
 
     useEffect(() => {
@@ -211,8 +214,8 @@ const BreakdownModal: React.FC<{
     };
 
     const handleSave = () => {
-        if (currentTotal !== totalQuantity) {
-            alert(`จำนวนรวมของรายการย่อย (${currentTotal}) ไม่เท่ากับจำนวนรายการหลัก (${totalQuantity}) กรุณาตรวจสอบ`);
+        if (currentTotal !== installQuantity) {
+            alert(`จำนวนรวมของรายการย่อย (${currentTotal}) ไม่เท่ากับจำนวนรายการหลักที่จะติดตั้ง (${installQuantity}) กรุณาตรวจสอบ`);
             return;
         }
         const finalQuantities = Object.entries(subQuantities).reduce((acc, [itemId, qtyStr]) => {
@@ -231,7 +234,7 @@ const BreakdownModal: React.FC<{
         <Modal isOpen={isOpen} onClose={onClose} title={`ระบุรายละเอียดสำหรับ ${parentItem.name}`}>
             <div className="space-y-4">
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-center">
-                    <p className="font-semibold text-blue-800">จำนวนทั้งหมด: {totalQuantity} {parentItem.unit}</p>
+                    <p className="font-semibold text-blue-800">จำนวนที่จะติดตั้งทั้งหมด: {installQuantity} {parentItem.unit}</p>
                 </div>
                 <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-2">
                     {childItems.map(child => (
@@ -251,13 +254,13 @@ const BreakdownModal: React.FC<{
                     ))}
                 </div>
 
-                <div className={`p-3 rounded-lg text-center font-semibold ${currentTotal > totalQuantity ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-green-100 text-green-800 border border-green-200'}`}>
-                    จำนวนที่ระบุ: {currentTotal} / {totalQuantity}
+                <div className={`p-3 rounded-lg text-center font-semibold ${currentTotal > installQuantity ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-green-100 text-green-800 border border-green-200'}`}>
+                    จำนวนที่ระบุ: {currentTotal} / {installQuantity}
                 </div>
 
                 <div className="flex justify-end space-x-2 pt-4">
                     <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">ยกเลิก</button>
-                    <button type="button" onClick={handleSave} disabled={currentTotal !== totalQuantity} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed">บันทึก</button>
+                    <button type="button" onClick={handleSave} disabled={currentTotal !== installQuantity} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed">บันทึก</button>
                 </div>
             </div>
         </Modal>
@@ -297,7 +300,7 @@ const App: React.FC = () => {
     const [selectedDepartment, setSelectedDepartment] = useState<string>(DEPARTMENTS[2]);
     const [selectedJobId, setSelectedJobId] = useState<string>('');
     const [selectedItemId, setSelectedItemId] = useState<string>('');
-    const [currentQuantity, setCurrentQuantity] = useState<string>('1');
+    const [currentQuantities, setCurrentQuantities] = useState({ install: '1', remove: '', reuse: '' });
     const [isEquipmentManagerOpen, setIsEquipmentManagerOpen] = useState(false);
     const [collapsedDepartments, setCollapsedDepartments] = useState<Set<string>>(new Set());
     const [collapsedJobs, setCollapsedJobs] = useState<Set<string>>(new Set());
@@ -373,10 +376,10 @@ const App: React.FC = () => {
     const jobCalculations = useMemo(() => {
         const results = jobs.map(job => {
             const itemsInJob = Object.entries(job.items)
-                .map(([itemId, quantity]) => ({ item: equipment.find(e => e.id === itemId), quantity: Number(quantity) }))
-                .filter((i): i is { item: EquipmentItem, quantity: number } => !!i.item);
+                .map(([itemId, quantities]) => ({ item: equipment.find(e => e.id === itemId), quantities }))
+                .filter((i): i is { item: EquipmentItem, quantities: ItemQuantities } => !!i.item && hasQuantities(i.quantities));
 
-            const baseCost = itemsInJob.reduce((total, { item, quantity }) => total + item.price * quantity, 0);
+            const baseCost = itemsInJob.reduce((total, { item, quantities }) => total + item.price * (quantities.install || 0), 0);
 
             let chargedCost = 0;
             if (job.investment === 'ผู้ใช้ไฟ') {
@@ -392,7 +395,6 @@ const App: React.FC = () => {
             }
             
             const total = (job.investment === 'กฟภ.' && job.asset === 'กฟภ.') ? 0 : chargedCost + profit;
-
 
             return {
                 jobId: job.id,
@@ -442,7 +444,8 @@ const App: React.FC = () => {
     }, [jobs, jobCalculations.totalsByJobId]);
 
     const jobBasedSummary = useMemo(() => {
-        const summary: Record<string, { job: Job; items: QuotationItem[] }[]> = {};
+        type SummaryJob = { job: Job; items: { item: EquipmentItem; quantities: ItemQuantities }[] };
+        const summary: Record<string, SummaryJob[]> = {};
 
         departmentsInView.forEach(dep => {
             summary[dep] = [];
@@ -450,11 +453,11 @@ const App: React.FC = () => {
 
             jobsInDep.forEach(job => {
                 const itemsInJob = Object.entries(job.items)
-                    .map(([itemId, quantity]) => {
+                    .map(([itemId, quantities]) => {
                         const item = equipment.find(e => e.id === itemId);
-                        return item ? { item, quantity: Number(quantity) } : null;
+                        return item ? { item, quantities } : null;
                     })
-                    .filter((i): i is QuotationItem => !!i)
+                    .filter((i): i is { item: EquipmentItem; quantities: ItemQuantities } => !!i && hasQuantities(i.quantities))
                     .sort((a, b) => a.item.name.localeCompare(b.item.name, 'th'));
                 
                 if (itemsInJob.length > 0) {
@@ -480,11 +483,13 @@ const App: React.FC = () => {
             const isNoChargeJob = job.investment === 'กฟภ.';
             const targetMap = isNoChargeJob ? dataByDept[job.department].nonChargeable : dataByDept[job.department].chargeable;
 
-            Object.entries(job.items).forEach(([itemId, quantity]) => {
+            Object.entries(job.items).forEach(([itemId, quantities]) => {
                 const item = equipment.find(e => e.id === itemId);
                 if (!item) return;
 
-                const numQuantity = Number(quantity);
+                const installQuantity = quantities.install || 0;
+                if (installQuantity <= 0) return;
+
                 let finalItem = item;
                 let finalItemId = item.id;
 
@@ -497,9 +502,9 @@ const App: React.FC = () => {
                 }
 
                 if (targetMap.has(finalItemId)) {
-                    targetMap.get(finalItemId)!.quantity += numQuantity;
+                    targetMap.get(finalItemId)!.quantity += installQuantity;
                 } else {
-                    targetMap.set(finalItemId, { item: finalItem, quantity: numQuantity });
+                    targetMap.set(finalItemId, { item: finalItem, quantity: installQuantity });
                 }
             });
         });
@@ -547,7 +552,38 @@ const App: React.FC = () => {
         setEquipment(sortEquipmentList(migratedEquipment));
         
         if (data.jobs && Array.isArray(data.jobs)) {
-             setJobs(data.jobs.map(j => ({ ...j, profitMargin: j.profitMargin || 0 })));
+            const migratedJobs = data.jobs.map(job => {
+                const newItems: Record<string, ItemQuantities> = {};
+                // FIX: Add check for job.items and safely process its properties to avoid 'unknown' type errors.
+                if (job.items && typeof job.items === 'object') {
+                    for (const itemId in job.items) {
+                        const quantityOrQuantities = (job.items as Record<string, any>)[itemId];
+                        if (typeof quantityOrQuantities === 'number') {
+                            newItems[itemId] = { install: quantityOrQuantities };
+                        } else if (typeof quantityOrQuantities === 'object' && quantityOrQuantities !== null) {
+                            // FIX: Safely construct ItemQuantities from potentially untyped object to avoid downstream errors.
+                            const parsed: ItemQuantities = {};
+                            if (quantityOrQuantities.install != null) {
+                                const val = Number(quantityOrQuantities.install);
+                                if (!isNaN(val)) parsed.install = val;
+                            }
+                            if (quantityOrQuantities.remove != null) {
+                                const val = Number(quantityOrQuantities.remove);
+                                if (!isNaN(val)) parsed.remove = val;
+                            }
+                            if (quantityOrQuantities.reuse != null) {
+                                const val = Number(quantityOrQuantities.reuse);
+                                if (!isNaN(val)) parsed.reuse = val;
+                            }
+                            if (Object.keys(parsed).length > 0) {
+                                newItems[itemId] = parsed;
+                            }
+                        }
+                    }
+                }
+                return { ...job, items: newItems, profitMargin: job.profitMargin || 0 };
+            });
+            setJobs(migratedJobs);
         } else if (data.quotation) { // Migration logic from old format
             const migratedJobs: Job[] = [];
             const itemsByDept: Record<string, Record<string, number>> = {};
@@ -557,7 +593,8 @@ const App: React.FC = () => {
                 const itemInfo = allEquipment.find(e => e.id === itemId);
                 if (itemInfo) {
                     if (!itemsByDept[itemInfo.department]) itemsByDept[itemInfo.department] = {};
-                    const numQuantity = Number(quantity as any);
+                    // FIX: Handle potential non-number types safely by casting to 'any' for the Number conversion, satisfying strict compiler rules.
+                    const numQuantity = Number(quantity);
                     if (!isNaN(numQuantity) && numQuantity > 0) {
                         itemsByDept[itemInfo.department][itemId] = numQuantity;
                     }
@@ -566,13 +603,17 @@ const App: React.FC = () => {
             
             for (const [department, items] of Object.entries(itemsByDept)) {
                 if(Object.keys(items).length > 0) {
+                     const newItems: Record<string, ItemQuantities> = {};
+                     for(const [itemId, quantity] of Object.entries(items)) {
+                         newItems[itemId] = { install: quantity };
+                     }
                     migratedJobs.push({
                         id: crypto.randomUUID(),
                         name: `รายการนำเข้าจากโปรเจคเก่า`,
                         department: department,
                         investment: 'ผู้ใช้ไฟ',
                         asset: 'ผู้ใช้ไฟ',
-                        items: items,
+                        items: newItems,
                         profitMargin: 0
                     });
                 }
@@ -707,16 +748,28 @@ const App: React.FC = () => {
 
 
     // --- Item Management ---
-    const handleUpdateItemQuantity = (jobId: string, itemId: string, quantity: string) => {
-        const numQuantity = parseInt(quantity, 10);
+    const handleUpdateItemQuantities = (jobId: string, itemId: string, type: keyof ItemQuantities, value: string) => {
+        const numValue = parseInt(value, 10);
+        
         setJobs(prevJobs => prevJobs.map(job => {
             if (job.id === jobId) {
                 const newItems = { ...job.items };
-                if (!isNaN(numQuantity) && numQuantity > 0) {
-                    newItems[itemId] = numQuantity;
+                // FIX: Explicitly type `currentQuantities` to prevent errors when accessing its properties.
+                const currentQuantities: ItemQuantities = newItems[itemId] || {};
+                const newQuantities: ItemQuantities = { ...currentQuantities };
+
+                if (!isNaN(numValue) && numValue > 0) {
+                    newQuantities[type] = numValue;
+                } else {
+                    delete newQuantities[type];
+                }
+
+                if (hasQuantities(newQuantities)) {
+                    newItems[itemId] = newQuantities;
                 } else {
                     delete newItems[itemId];
                 }
+
                 return { ...job, items: newItems };
             }
             return job;
@@ -776,24 +829,33 @@ const App: React.FC = () => {
             alert('กรุณาเลือกอุปกรณ์');
             return;
         }
-        const quantityNum = parseInt(currentQuantity, 10);
-        if (isNaN(quantityNum) || quantityNum <= 0) {
-            alert('กรุณาใส่จำนวนที่ถูกต้อง');
+
+        const install = parseInt(currentQuantities.install, 10) || 0;
+        const remove = parseInt(currentQuantities.remove, 10) || 0;
+        const reuse = parseInt(currentQuantities.reuse, 10) || 0;
+
+        if (install <= 0 && remove <= 0 && reuse <= 0) {
+            alert('กรุณาใส่จำนวนอย่างน้อยหนึ่งประเภท');
             return;
         }
 
         setJobs(prevJobs => prevJobs.map(job => {
             if (job.id === selectedJobId) {
                 const newItems = { ...job.items };
-                const existingQuantity = newItems[selectedItemId] || 0;
-                newItems[selectedItemId] = existingQuantity + quantityNum;
+                // FIX: Explicitly type `existingQuantities` to prevent errors when accessing its properties.
+                const existingQuantities: ItemQuantities = newItems[selectedItemId] || {};
+                newItems[selectedItemId] = {
+                    install: (existingQuantities.install || 0) + install,
+                    remove: (existingQuantities.remove || 0) + remove,
+                    reuse: (existingQuantities.reuse || 0) + reuse,
+                };
                 return { ...job, items: newItems };
             }
             return job;
         }));
 
         setSelectedItemId('');
-        setCurrentQuantity('1');
+        setCurrentQuantities({ install: '1', remove: '', reuse: '' });
     };
 
     const handleRemoveFromJob = (jobId: string, itemId: string) => {
@@ -816,11 +878,26 @@ const App: React.FC = () => {
         setJobs(prevJobs => prevJobs.map(job => {
             if (job.id === jobId) {
                 const newItems = { ...job.items };
-                delete newItems[parentItemId]; // Remove parent item
+                // FIX: Explicitly type `parentQuants` to prevent errors when accessing its properties.
+                const parentQuants: ItemQuantities = newItems[parentItemId] || {};
+                
+                const updatedParentQuants = { ...parentQuants };
+                delete (updatedParentQuants as Partial<ItemQuantities>).install;
+                
+                if (!hasQuantities(updatedParentQuants)) {
+                    delete newItems[parentItemId];
+                } else {
+                    newItems[parentItemId] = updatedParentQuants;
+                }
                 
                 for (const [subItemId, quantity] of Object.entries(subQuantities)) {
                     if (quantity > 0) {
-                        newItems[subItemId] = (newItems[subItemId] || 0) + quantity; // Add child item quantities
+                        // FIX: Explicitly type `existingSubItemQuants` to prevent errors when accessing its properties.
+                        const existingSubItemQuants: ItemQuantities = newItems[subItemId] || {};
+                        newItems[subItemId] = {
+                            ...existingSubItemQuants,
+                            install: (existingSubItemQuants.install || 0) + quantity
+                        };
                     }
                 }
                 
@@ -954,7 +1031,7 @@ const App: React.FC = () => {
 
         ws_data.push([`ใบเสนอราคา: ${currentProjectName}`]);
         ws_data.push([]);
-        ws_data.push(['ลำดับ', 'รหัสพัสดุ', 'รายการ', 'หน่วย', 'จำนวน', 'ราคาต่อหน่วย', 'ราคารวม']);
+        ws_data.push(['ลำดับ', 'รหัสพัสดุ', 'รายการ', 'หน่วย', 'ติดตั้ง', 'รื้อถอน', 'นำกลับมาใช้', 'ราคาต่อหน่วย', 'ราคารวม (ติดตั้ง)']);
 
         let itemNumber = 1;
         departmentsInView.forEach(dep => {
@@ -963,27 +1040,29 @@ const App: React.FC = () => {
 
             jobsInDep.forEach(job => {
                 ws_data.push([`ประเภทงาน: ${job.name} (การลงทุน: ${job.investment} / ทรัพย์สิน: ${job.asset})`]);
-                const itemsInJob = Object.entries(job.items).map(([itemId, quantity]) => {
+                const itemsInJob = Object.entries(job.items).map(([itemId, quantities]) => {
                     const item = equipment.find(e => e.id === itemId);
-                    return item ? { item, quantity } : null;
-                }).filter(Boolean) as QuotationItem[];
+                    return item ? { item, quantities } : null;
+                }).filter((i): i is { item: EquipmentItem, quantities: ItemQuantities } => !!i);
                 
                 const jobTotal = jobCalculations.totalsByJobId.get(job.id)?.total || 0;
 
-                itemsInJob.forEach(({ item, quantity }) => {
+                itemsInJob.forEach(({ item, quantities }) => {
                     ws_data.push([
                         itemNumber++,
                         item.code,
                         item.name,
                         item.unit,
-                        quantity,
+                        quantities.install || 0,
+                        quantities.remove || 0,
+                        quantities.reuse || 0,
                         item.price,
-                        item.price * Number(quantity)
+                        item.price * (quantities.install || 0)
                     ]);
                 });
-                ws_data.push([null, null, null, null, null, `รวมยอด ${job.name}`, jobTotal]);
+                ws_data.push([null, null, null, null, null, null, null, `รวมยอด ${job.name}`, jobTotal]);
             });
-            ws_data.push([null, null, null, null, null, `รวมยอด ${dep}`, departmentSubtotals[dep] || 0]);
+            ws_data.push([null, null, null, null, null, null, null, `รวมยอด ${dep}`, departmentSubtotals[dep] || 0]);
             ws_data.push([]);
         });
         
@@ -992,20 +1071,78 @@ const App: React.FC = () => {
         }
 
         ws_data.push([]);
-        ws_data.push([null, null, null, null, null, 'ราคาทุน', subTotal]);
-        ws_data.push([null, null, null, null, null, `กำไรรวม`, profitAmount]);
-        ws_data.push([null, null, null, null, null, 'รวมก่อน VAT', totalBeforeVat]);
-        ws_data.push([null, null, null, null, null, 'VAT (7%)', vatAmount]);
-        ws_data.push([null, null, null, null, null, 'ยอดรวมสุทธิ', grandTotal]);
+        ws_data.push([null, null, null, null, null, null, null, 'ราคาทุน', subTotal]);
+        ws_data.push([null, null, null, null, null, null, null, `กำไรรวม`, profitAmount]);
+        ws_data.push([null, null, null, null, null, null, null, 'รวมก่อน VAT', totalBeforeVat]);
+        ws_data.push([null, null, null, null, null, null, null, 'VAT (7%)', vatAmount]);
+        ws_data.push([null, null, null, null, null, null, null, 'ยอดรวมสุทธิ', grandTotal]);
 
         const ws = window.XLSX.utils.aoa_to_sheet(ws_data);
 
-        ws['!cols'] = [ { wch: 5 }, { wch: 15 }, { wch: 50 }, { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 15 } ];
+        ws['!cols'] = [ { wch: 5 }, { wch: 15 }, { wch: 50 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 15 } ];
         
         window.XLSX.utils.book_append_sheet(wb, ws, "ใบเสนอราคา");
 
         const today = new Date().toISOString().slice(0, 10);
         const fileName = `ใบเสนอราคา-${currentProjectName.replace(/[\s()]/g, '_')}-${today}.xlsx`;
+        window.XLSX.writeFile(wb, fileName);
+    };
+
+    const handleExportSummaryToExcel = () => {
+        if (jobs.length === 0) {
+            alert("ไม่มีอุปกรณ์ในโครงการสำหรับ Export");
+            return;
+        }
+
+        const wb = window.XLSX.utils.book_new();
+        const ws_data: any[][] = [];
+
+        ws_data.push([`สรุปรายการอุปกรณ์`]);
+        ws_data.push([`โครงการ: ${clientInfo.project || currentProjectName}`]);
+        ws_data.push([]);
+
+        const headers = ['ลำดับ', 'แผนก', 'ประเภทงาน', 'รหัสพัสดุ', 'รายการ', 'ติดตั้ง', 'รื้อถอน', 'นำกลับมาใช้', 'หน่วย'];
+        ws_data.push(headers);
+        
+        let itemNum = 1;
+        departmentsInView.forEach(dep => {
+            const jobsInDep = jobBasedSummary[dep];
+            if (!jobsInDep) return;
+
+            jobsInDep.forEach(({ job, items }) => {
+                items.forEach(({ item, quantities }) => {
+                     ws_data.push([
+                        itemNum++,
+                        dep,
+                        job.name,
+                        item.code || '-',
+                        item.name,
+                        quantities.install || 0,
+                        quantities.remove || 0,
+                        quantities.reuse || 0,
+                        item.unit
+                     ]);
+                });
+            });
+        });
+        
+        const ws = window.XLSX.utils.aoa_to_sheet(ws_data);
+        ws['!cols'] = [
+            { wch: 5 },  // #
+            { wch: 20 }, // Department
+            { wch: 25 }, // Job
+            { wch: 15 }, // Code
+            { wch: 50 }, // Name
+            { wch: 10 }, // Install
+            { wch: 10 }, // Remove
+            { wch: 10 }, // Reuse
+            { wch: 10 }  // Unit
+        ];
+        
+        window.XLSX.utils.book_append_sheet(wb, ws, "สรุปรายการอุปกรณ์");
+
+        const today = new Date().toISOString().slice(0, 10);
+        const fileName = `สรุปรายการอุปกรณ์-${currentProjectName.replace(/[\s()]/g, '_')}-${today}.xlsx`;
         window.XLSX.writeFile(wb, fileName);
     };
 
@@ -1045,10 +1182,9 @@ const App: React.FC = () => {
                             </h1>
                             <div className="flex items-center space-x-1 md:space-x-2 flex-shrink-0">
                                <button onClick={() => setView('summary')} title="สรุปรายการอุปกรณ์" className="flex items-center gap-2 px-3 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition-colors"><DocumentTextIcon className="h-5 w-5"/><span className="hidden md:inline">สรุป</span></button>
-                               <button onClick={() => setView('quotation')} title="ดูตัวอย่างใบเสนอราคา" className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"><EyeIcon className="h-5 w-5"/><span className="hidden md:inline">ตัวอย่าง</span></button>
+                               <button onClick={() => setView('quotation')} title="ดูใบเสนอราคา" className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"><EyeIcon className="h-5 w-5"/><span className="hidden md:inline">ใบเสนอราคา</span></button>
                                <button onClick={handleSaveCurrentProject} title="บันทึกโปรเจคปัจจุบัน" className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"><SaveIcon className="h-5 w-5"/><span className="hidden md:inline">บันทึก</span></button>
                                <button onClick={() => setIsProjectManagerOpen(true)} title="จัดการโปรเจค" className="flex items-center gap-2 px-3 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"><FolderOpenIcon className="h-5 w-5"/><span className="hidden md:inline">โปรเจค</span></button>
-                               <button onClick={handleExportToExcel} title="Export เป็น Excel" className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"><DocumentArrowDownIcon className="h-5 w-5"/><span className="hidden md:inline">Export</span></button>
                                <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx, .xls" className="hidden" />
                             </div>
                         </div>
@@ -1086,8 +1222,25 @@ const App: React.FC = () => {
                                     {filteredEquipment.map(item => (<option key={item.id} value={item.id}>{item.code ? `(${item.code}) ` : ''}{item.name}</option>))}
                                   </select>
                                 </div>
-                                <div className="flex-shrink-0"><label htmlFor="quantity-input" className="block text-sm font-medium text-gray-700">4. จำนวน</label><input id="quantity-input" type="number" min="1" value={currentQuantity} onChange={e => setCurrentQuantity(e.target.value)} className="mt-1 w-24 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" /></div>
-                                <div className="flex-shrink-0 self-end w-full md:w-auto"><button onClick={handleAddItemToJob} className="flex w-full md:w-auto items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors h-[42px]"><PlusIcon className="h-5 w-5"/><span>เพิ่ม</span></button></div>
+                                <div className="xl:col-span-2">
+                                  <label className="block text-sm font-medium text-gray-700">4. จำนวน</label>
+                                  <div className="mt-1 grid grid-cols-3 gap-2">
+                                      <div>
+                                          <label className="block text-xs text-gray-500 text-center">ติดตั้ง</label>
+                                          <input type="number" min="0" value={currentQuantities.install} onChange={e => setCurrentQuantities(q => ({...q, install: e.target.value}))} className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-center" placeholder="0"/>
+                                      </div>
+                                      <div>
+                                          <label className="block text-xs text-gray-500 text-center">รื้อถอน</label>
+                                          <input type="number" min="0" value={currentQuantities.remove} onChange={e => setCurrentQuantities(q => ({...q, remove: e.target.value}))} className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-center" placeholder="0"/>
+                                      </div>
+                                      <div>
+                                          <label className="block text-xs text-gray-500 text-center">นำกลับมาใช้</label>
+                                          <input type="number" min="0" value={currentQuantities.reuse} onChange={e => setCurrentQuantities(q => ({...q, reuse: e.target.value}))} className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-center" placeholder="0"/>
+                                      </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex-shrink-0 self-end w-full md:w-auto xl:col-start-5"><button onClick={handleAddItemToJob} className="flex w-full md:w-auto items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors h-[42px]"><PlusIcon className="h-5 w-5"/><span>เพิ่ม</span></button></div>
                             </div>
 
                             {/* Responsive Table/List */}
@@ -1096,7 +1249,7 @@ const App: React.FC = () => {
                                     <div className="md:table-row">
                                         <div className="md:table-cell p-2 w-28">รหัสพัสดุ</div>
                                         <div className="md:table-cell p-2">รายการ</div>
-                                        <div className="md:table-cell p-2 w-40 text-center">จำนวน</div>
+                                        <div className="md:table-cell p-2 w-64 text-center">จำนวน</div>
                                         <div className="md:table-cell p-2 w-32 text-right">ราคา/หน่วย</div>
                                         <div className="md:table-cell p-2 w-32 text-right">รวม</div>
                                         <div className="md:table-cell p-2 w-12 text-center">...</div>
@@ -1123,7 +1276,7 @@ const App: React.FC = () => {
                                                         </div>
                                                     </div>
                                                     {!isDepCollapsed && jobsInDep.map(job => {
-                                                        const itemsInJob = Object.entries(job.items).map(([itemId, quantity]) => ({ item: equipment.find(e => e.id === itemId), quantity })).filter(i => i.item);
+                                                        const itemsInJob = Object.entries(job.items).map(([itemId, quantities]) => ({ item: equipment.find(e => e.id === itemId), quantities })).filter((i): i is { item: EquipmentItem, quantities: ItemQuantities } => !!i.item);
                                                         const jobCalc = jobCalculations.totalsByJobId.get(job.id);
                                                         if (!jobCalc) return null;
                                                         const isNoChargeJob = job.investment === 'กฟภ.';
@@ -1153,34 +1306,41 @@ const App: React.FC = () => {
                                                             </div>
                                                             {!isJobCollapsed && (
                                                             <>
-                                                                {itemsInJob.map(({ item, quantity }) => {
-                                                                    const isParent = equipment.some(e => e.parentId === item!.id);
+                                                                {itemsInJob.map(({ item, quantities }) => {
+                                                                    if (!item) return null;
+                                                                    const isParent = equipment.some(e => e.parentId === item.id);
                                                                     return (
-                                                                    <div key={item!.id} className={`border-b md:table-row hover:bg-gray-50 ${isNoChargeJob ? 'opacity-60' : ''} ${item?.parentId ? 'bg-gray-50' : ''}`}>
-                                                                        <div className="p-2 md:table-cell text-sm text-gray-600 font-mono hidden md:block">{item!.code || '-'}</div>
+                                                                    <div key={item.id} className={`border-b md:table-row hover:bg-gray-50 ${isNoChargeJob ? 'opacity-60' : ''} ${item.parentId ? 'bg-gray-50' : ''}`}>
+                                                                        <div className="p-2 md:table-cell text-sm text-gray-600 font-mono hidden md:block">{item.code || '-'}</div>
                                                                         <div className="p-2 font-medium md:table-cell">
-                                                                            <span className="font-mono text-xs text-gray-500 block md:hidden">รหัส: {item!.code || '-'}</span>
-                                                                            <span className={`${item?.parentId ? 'pl-4' : ''}`}>{item!.name}</span>
+                                                                            <span className="font-mono text-xs text-gray-500 block md:hidden">รหัส: {item.code || '-'}</span>
+                                                                            <span className={`${item.parentId ? 'pl-4' : ''}`}>{item.name}</span>
                                                                         </div>
                                                                         <div className="p-2 md:table-cell">
                                                                             <div className="flex items-center justify-between md:justify-center gap-1">
-                                                                                <span className="md:hidden text-gray-500">จำนวน:</span>
-                                                                                <div className="flex items-center gap-2">
-                                                                                    <input type="number" min="1" value={quantity} onChange={e => handleUpdateItemQuantity(job.id, item!.id, e.target.value)} className="w-20 p-1 border rounded-md text-center" />
-                                                                                    <span className="text-gray-600 w-12">{item!.unit}</span>
+                                                                                <div className="grid grid-cols-3 gap-1 w-full max-w-xs mx-auto md:max-w-none">
+                                                                                    <input type="number" title="ติดตั้ง" min="0" value={quantities.install || ''} onChange={e => handleUpdateItemQuantities(job.id, item.id, 'install', e.target.value)} className="w-full p-1 border rounded-md text-center" placeholder="0"/>
+                                                                                    <input type="number" title="รื้อถอน" min="0" value={quantities.remove || ''} onChange={e => handleUpdateItemQuantities(job.id, item.id, 'remove', e.target.value)} className="w-full p-1 border rounded-md text-center" placeholder="0"/>
+                                                                                    <input type="number" title="นำกลับมาใช้" min="0" value={quantities.reuse || ''} onChange={e => handleUpdateItemQuantities(job.id, item.id, 'reuse', e.target.value)} className="w-full p-1 border rounded-md text-center" placeholder="0"/>
                                                                                 </div>
+                                                                                <span className="text-gray-600 w-12 text-right">{item.unit}</span>
+                                                                            </div>
+                                                                            <div className="grid grid-cols-3 gap-1 w-full max-w-xs mx-auto md:max-w-none md:mt-1">
+                                                                                <span className="text-center text-xs text-gray-500">ติดตั้ง</span>
+                                                                                <span className="text-center text-xs text-gray-500">รื้อถอน</span>
+                                                                                <span className="text-center text-xs text-gray-500">นำกลับมาใช้</span>
                                                                             </div>
                                                                         </div>
-                                                                        <div className="p-2 text-right font-mono md:table-cell"><span className="md:hidden text-gray-500">ราคา/หน่วย: </span>{formatCurrency(item!.price)}</div>
-                                                                        <div className="p-2 text-right font-mono font-semibold md:table-cell"><span className="md:hidden text-gray-500">รวม: </span>{formatCurrency(item!.price * Number(quantity))}</div>
+                                                                        <div className="p-2 text-right font-mono md:table-cell"><span className="md:hidden text-gray-500">ราคา/หน่วย: </span>{formatCurrency(item.price)}</div>
+                                                                        <div className="p-2 text-right font-mono font-semibold md:table-cell"><span className="md:hidden text-gray-500">รวม: </span>{formatCurrency(item.price * (quantities.install || 0))}</div>
                                                                         <div className="p-2 text-center md:table-cell">
                                                                             <div className="flex justify-center items-center gap-1">
-                                                                                {isParent && (
-                                                                                    <button onClick={() => handleOpenBreakdownModal(job.id, item!.id)} title="ระบุรายละเอียด" className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-100 rounded-full">
+                                                                                {isParent && (quantities.install || 0) > 0 && (
+                                                                                    <button onClick={() => handleOpenBreakdownModal(job.id, item.id)} title="ระบุรายละเอียด" className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-100 rounded-full">
                                                                                         <ListBulletIcon className="h-5 w-5" />
                                                                                     </button>
                                                                                 )}
-                                                                                <button onClick={() => handleRemoveFromJob(job.id, item!.id)} title="ลบรายการนี้" className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full">
+                                                                                <button onClick={() => handleRemoveFromJob(job.id, item.id)} title="ลบรายการนี้" className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full">
                                                                                     <TrashIcon className="h-5 w-5" />
                                                                                 </button>
                                                                             </div>
@@ -1365,6 +1525,10 @@ const App: React.FC = () => {
 
                       <footer className="print:hidden mt-12 flex justify-center gap-4">
                           <button onClick={() => setView('workspace')} className="px-6 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors">กลับไปแก้ไข</button>
+                          <button onClick={handleExportToExcel} className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
+                              <DocumentArrowDownIcon className="h-5 w-5"/>
+                              <span>Export เป็น Excel</span>
+                          </button>
                           <button onClick={() => window.print()} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
                               <PrinterIcon className="h-5 w-5"/>
                               <span>พิมพ์ / บันทึกเป็น PDF</span>
@@ -1392,7 +1556,9 @@ const App: React.FC = () => {
                                       <th className="p-2 text-left w-12">#</th>
                                       <th className="p-2 text-left">รหัสพัสดุ</th>
                                       <th className="p-2 text-left">รายการ</th>
-                                      <th className="p-2 text-right">จำนวน</th>
+                                      <th className="p-2 text-right">ติดตั้ง</th>
+                                      <th className="p-2 text-right">รื้อถอน</th>
+                                      <th className="p-2 text-right">นำกลับมาใช้</th>
                                       <th className="p-2 text-left">หน่วย</th>
                                   </tr>
                               </thead>
@@ -1404,7 +1570,7 @@ const App: React.FC = () => {
                                       if (departmentsWithJobs.length === 0) {
                                         return (
                                           <tr>
-                                            <td colSpan={5} className="text-center text-gray-500 py-10">ไม่มีอุปกรณ์ในโครงการนี้</td>
+                                            <td colSpan={7} className="text-center text-gray-500 py-10">ไม่มีอุปกรณ์ในโครงการนี้</td>
                                           </tr>
                                         );
                                       }
@@ -1412,21 +1578,23 @@ const App: React.FC = () => {
                                       return departmentsWithJobs.map(dep => (
                                           <React.Fragment key={dep}>
                                             <tr className="bg-gray-100 font-bold">
-                                              <td colSpan={5} className="p-2 border-t-2 border-b border-gray-300">{dep}</td>
+                                              <td colSpan={7} className="p-2 border-t-2 border-b border-gray-300">{dep}</td>
                                             </tr>
                                             {jobBasedSummary[dep].map(({ job, items }) => (
                                                 <React.Fragment key={job.id}>
                                                     <tr className="bg-gray-50 font-semibold">
-                                                        <td colSpan={5} className="p-2 pl-4 text-gray-800">{job.name} <span className="font-normal text-xs">({job.investment} / {job.asset})</span></td>
+                                                        <td colSpan={7} className="p-2 pl-4 text-gray-800">{job.name} <span className="font-normal text-xs">({job.investment} / {job.asset})</span></td>
                                                     </tr>
-                                                    {items.map(({ item, quantity }) => {
+                                                    {items.map(({ item, quantities }) => {
                                                         runningItemNumber++;
                                                         return (
                                                             <tr key={item.id} className="border-b border-gray-100">
                                                                 <td className="p-2 text-center">{runningItemNumber}</td>
                                                                 <td className="p-2 font-mono text-xs">{item.code || '-'}</td>
                                                                 <td className="p-2 pl-8">{item.name}</td>
-                                                                <td className="p-2 text-right font-mono">{quantity}</td>
+                                                                <td className="p-2 text-right font-mono">{quantities.install || 0}</td>
+                                                                <td className="p-2 text-right font-mono">{quantities.remove || 0}</td>
+                                                                <td className="p-2 text-right font-mono">{quantities.reuse || 0}</td>
                                                                 <td className="p-2">{item.unit}</td>
                                                             </tr>
                                                         );
@@ -1442,6 +1610,10 @@ const App: React.FC = () => {
 
                       <footer className="print:hidden mt-12 flex justify-center gap-4">
                           <button onClick={() => setView('workspace')} className="px-6 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors">กลับไปแก้ไข</button>
+                          <button onClick={handleExportSummaryToExcel} className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
+                              <DocumentArrowDownIcon className="h-5 w-5"/>
+                              <span>Export เป็น Excel</span>
+                          </button>
                           <button onClick={() => window.print()} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
                               <PrinterIcon className="h-5 w-5"/>
                               <span>พิมพ์ / บันทึกเป็น PDF</span>
@@ -1455,17 +1627,17 @@ const App: React.FC = () => {
             {itemToBreakdown && (() => {
                 const parentItem = equipment.find(e => e.id === itemToBreakdown.itemId);
                 const job = jobs.find(j => j.id === itemToBreakdown.jobId);
-                const totalQuantity = job?.items[itemToBreakdown.itemId];
+                const installQuantity = job?.items[itemToBreakdown.itemId]?.install || 0;
                 const childItems = equipment.filter(e => e.parentId === itemToBreakdown.itemId);
 
-                if (!parentItem || !job || typeof totalQuantity === 'undefined') return null;
+                if (!parentItem || !job || installQuantity <= 0) return null;
 
                 return <BreakdownModal 
                     isOpen={isBreakdownModalOpen}
                     onClose={() => setIsBreakdownModalOpen(false)}
                     onSave={handleSaveBreakdown}
                     parentItem={parentItem}
-                    totalQuantity={totalQuantity}
+                    installQuantity={installQuantity}
                     childItems={childItems}
                     jobId={itemToBreakdown.jobId}
                 />
@@ -1504,7 +1676,8 @@ const App: React.FC = () => {
                     <div>
                         <h3 className="text-lg font-semibold border-b pb-2 mb-3">โปรเจคปัจจุบัน</h3>
                         <div className="p-3 bg-gray-100 rounded-lg space-y-2">
-                             <Input label="ชื่อโปรเจคใหม่ / สำหรับบันทึก" value={newProjectName} onChange={(e: any) => setNewProjectName(e.target.value)} placeholder="เช่น โครงการของคุณสมศรี" />
+                             {/* FIX: Add correct type for the event object to resolve 'any' type error. */}
+                             <Input label="ชื่อโปรเจคใหม่ / สำหรับบันทึก" value={newProjectName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProjectName(e.target.value)} placeholder="เช่น โครงการของคุณสมศรี" />
                             <button onClick={handleSaveNewProject} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"><SaveIcon className="h-5 w-5"/><span>บันทึกงานปัจจุบันเป็นโปรเจคใหม่</span></button>
                         </div>
                     </div>
