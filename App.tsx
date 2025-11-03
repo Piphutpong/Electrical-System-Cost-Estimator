@@ -594,7 +594,7 @@ const App: React.FC = () => {
                 if (itemInfo) {
                     if (!itemsByDept[itemInfo.department]) itemsByDept[itemInfo.department] = {};
                     // FIX: Handle potential non-number types safely by casting to 'any' for the Number conversion, satisfying strict compiler rules.
-                    const numQuantity = Number(quantity);
+                    const numQuantity = Number(quantity as any);
                     if (!isNaN(numQuantity) && numQuantity > 0) {
                         itemsByDept[itemInfo.department][itemId] = numQuantity;
                     }
@@ -1348,26 +1348,79 @@ const App: React.FC = () => {
                                                                     </div>
                                                                     );
                                                                 })}
-                                                                {job.investment === 'ผู้ใช้ไฟ' && job.asset === 'ผู้ใช้ไฟ' && ( <> <div className="bg-slate-100 md:table-row"><div className="md:table-cell md:col-span-4 p-2 text-right font-semibold">ราคาทุน</div><div className="md:table-cell p-2 text-right font-mono">{formatCurrency(jobCalc.baseCost)}</div><div className="md:table-cell"></div></div><div className="bg-slate-100 md:table-row"><div className="md:table-cell md:col-span-4 p-2 text-right font-semibold text-green-700">กำไร ({job.profitMargin || 0}%)</div><div className="md:table-cell p-2 text-right font-mono text-green-700">{formatCurrency(jobCalc.profit)}</div><div className="md:table-cell"></div></div></>)}
-                                                                {job.investment === 'ผู้ใช้ไฟสมทบ 50%' && (<div className="bg-slate-100 md:table-row"><div className="md:table-cell md:col-span-4 p-2 text-right font-semibold">ราคาทุน (100%)</div><div className="md:table-cell p-2 text-right font-mono">{formatCurrency(jobCalc.baseCost)}</div><div className="md:table-cell"></div></div>)}
+                                                                {job.investment === 'ผู้ใช้ไฟ' && job.asset === 'ผู้ใช้ไฟ' && (
+                                                                    <>
+                                                                        <div className="bg-slate-100 md:table-row">
+                                                                            <div className="md:hidden px-2 py-1 flex justify-between items-center">
+                                                                                <span className="font-semibold">ราคาทุน</span>
+                                                                                <span className="font-mono">{formatCurrency(jobCalc.baseCost)}</span>
+                                                                            </div>
+                                                                            <div className="hidden md:table-cell" /><div className="hidden md:table-cell" /><div className="hidden md:table-cell" />
+                                                                            <div className="hidden md:table-cell p-2 text-right font-semibold">ราคาทุน</div>
+                                                                            <div className="hidden md:table-cell p-2 text-right font-mono">{formatCurrency(jobCalc.baseCost)}</div>
+                                                                            <div className="hidden md:table-cell" />
+                                                                        </div>
+                                                                        <div className="bg-slate-100 md:table-row">
+                                                                            <div className="md:hidden px-2 py-1 flex justify-between items-center text-green-700">
+                                                                                <span className="font-semibold">กำไร ({job.profitMargin || 0}%)</span>
+                                                                                <span className="font-mono">{formatCurrency(jobCalc.profit)}</span>
+                                                                            </div>
+                                                                            <div className="hidden md:table-cell" /><div className="hidden md:table-cell" /><div className="hidden md:table-cell" />
+                                                                            <div className="hidden md:table-cell p-2 text-right font-semibold text-green-700">กำไร ({job.profitMargin || 0}%)</div>
+                                                                            <div className="hidden md:table-cell p-2 text-right font-mono text-green-700">{formatCurrency(jobCalc.profit)}</div>
+                                                                            <div className="hidden md:table-cell" />
+                                                                        </div>
+                                                                    </>
+                                                                )}
+                                                                {job.investment === 'ผู้ใช้ไฟสมทบ 50%' && (
+                                                                    <div className="bg-slate-100 md:table-row">
+                                                                        <div className="md:hidden px-2 py-1 flex justify-between items-center">
+                                                                            <span className="font-semibold">ราคาทุน (100%)</span>
+                                                                            <span className="font-mono">{formatCurrency(jobCalc.baseCost)}</span>
+                                                                        </div>
+                                                                        <div className="hidden md:table-cell" /><div className="hidden md:table-cell" /><div className="hidden md:table-cell" />
+                                                                        <div className="hidden md:table-cell p-2 text-right font-semibold">ราคาทุน (100%)</div>
+                                                                        <div className="hidden md:table-cell p-2 text-right font-mono">{formatCurrency(jobCalc.baseCost)}</div>
+                                                                        <div className="hidden md:table-cell" />
+                                                                    </div>
+                                                                )}
                                                             </>
                                                             )}
                                                             <div className={`md:table-row bg-slate-100 border-b border-slate-200 ${isNoChargeJob ? 'opacity-60' : ''}`}>
-                                                                <div className="md:table-cell md:col-span-4 p-2 text-right font-semibold">รวม {job.name} {job.investment === 'ผู้ใช้ไฟสมทบ 50%' && <span className="font-normal text-xs"> (คิดค่าใช้จ่าย 50%)</span>}</div>
-                                                                <div className="md:table-cell p-2 text-right font-mono font-bold">{formatCurrency(jobCalc.total)}</div>
-                                                                <div className="md:table-cell"></div>
+                                                                <div className="md:hidden p-2 flex justify-between items-center">
+                                                                    <span className="font-semibold">รวม {job.name} {job.investment === 'ผู้ใช้ไฟสมทบ 50%' && <span className="font-normal text-xs"> (คิดค่าใช้จ่าย 50%)</span>}</span>
+                                                                    <span className="font-mono font-bold">{formatCurrency(jobCalc.total)}</span>
+                                                                </div>
+                                                                <div className="hidden md:table-cell" /><div className="hidden md:table-cell" /><div className="hidden md:table-cell" />
+                                                                <div className="hidden md:table-cell p-2 text-right font-semibold">รวม {job.name} {job.investment === 'ผู้ใช้ไฟสมทบ 50%' && <span className="font-normal text-xs"> (คิดค่าใช้จ่าย 50%)</span>}</div>
+                                                                <div className="hidden md:table-cell p-2 text-right font-mono font-bold">{formatCurrency(jobCalc.total)}</div>
+                                                                <div className="hidden md:table-cell" />
                                                             </div>
                                                         </React.Fragment>
                                                     )})}
                                                     <div className="md:table-row bg-slate-200 border-b-4 border-slate-400">
-                                                        <div className="md:table-cell md:col-span-4 p-2 text-right font-bold text-slate-700">
+                                                        <div className="md:hidden p-3">
+                                                            <div className="flex justify-between items-start">
+                                                                <div className="space-y-1">
+                                                                    <div className="font-bold text-slate-700">รวมยอด {dep}</div>
+                                                                    {depProfit > 0 && <div className="text-sm font-semibold text-green-700">กำไร</div>}
+                                                                </div>
+                                                                <div className="text-right space-y-1">
+                                                                    <div className="font-mono font-extrabold text-slate-800 text-lg">{formatCurrency(departmentSubtotals[dep] || 0)}</div>
+                                                                    {depProfit > 0 && <div className="text-sm font-semibold text-green-700 font-mono">{formatCurrency(depProfit)}</div>}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="hidden md:table-cell" /><div className="hidden md:table-cell" /><div className="hidden md:table-cell" />
+                                                        <div className="hidden md:table-cell p-2 text-right font-bold text-slate-700">
                                                             <div className="flex justify-end items-baseline gap-4">
                                                                 {depProfit > 0 && (<span className="text-sm font-semibold text-green-700">กำไร: {formatCurrency(depProfit)}</span>)}
                                                                 <span>รวมยอด {dep}</span>
                                                             </div>
                                                         </div>
-                                                        <div className="md:table-cell p-2 text-right font-mono font-extrabold text-slate-800">{formatCurrency(departmentSubtotals[dep] || 0)}</div>
-                                                        <div className="md:table-cell"></div>
+                                                        <div className="hidden md:table-cell p-2 text-right font-mono font-extrabold text-slate-800">{formatCurrency(departmentSubtotals[dep] || 0)}</div>
+                                                        <div className="hidden md:table-cell" />
                                                     </div>
                                                 </React.Fragment>
                                             );
