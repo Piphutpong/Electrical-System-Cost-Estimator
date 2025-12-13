@@ -289,7 +289,6 @@ const App: React.FC = () => {
     const [projects, setProjects] = useState<Project[]>([]);
     const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
     const [isProjectManagerOpen, setIsProjectManagerOpen] = useState(false);
-    const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
     const [newProjectName, setNewProjectName] = useState('');
 
     // UI state
@@ -377,7 +376,7 @@ const App: React.FC = () => {
     const jobCalculations = useMemo(() => {
         const results = jobs.map(job => {
             const itemsInJob = Object.entries(job.items)
-                .map(([itemId, quantities]) => ({ item: equipment.find(e => e.id === itemId), quantities }))
+                .map(([itemId, quantities]) => ({ item: equipment.find(e => e.id === itemId), quantities: quantities as ItemQuantities }))
                 .filter((i): i is { item: EquipmentItem, quantities: ItemQuantities } => !!i.item && hasQuantities(i.quantities));
 
             const baseCost = itemsInJob.reduce((total, { item, quantities }) => total + item.price * (quantities.install || 0), 0);
@@ -456,7 +455,7 @@ const App: React.FC = () => {
                 const itemsInJob = Object.entries(job.items)
                     .map(([itemId, quantities]) => {
                         const item = equipment.find(e => e.id === itemId);
-                        return item ? { item, quantities } : null;
+                        return item ? { item, quantities: quantities as ItemQuantities } : null;
                     })
                     .filter((i): i is { item: EquipmentItem; quantities: ItemQuantities } => !!i && hasQuantities(i.quantities))
                     .sort((a, b) => a.item.name.localeCompare(b.item.name, 'th'));
@@ -488,7 +487,8 @@ const App: React.FC = () => {
                 const item = equipment.find(e => e.id === itemId);
                 if (!item) return;
 
-                const installQuantity = quantities.install || 0;
+                const qty = quantities as ItemQuantities;
+                const installQuantity = qty.install || 0;
                 if (installQuantity <= 0) return;
 
                 let finalItem = item;
@@ -688,21 +688,17 @@ const App: React.FC = () => {
         }
     };
     
-    const handleConfirmDeleteProject = () => {
-        if (!projectToDelete) return;
-        const updatedProjects = projects.filter(p => p.id !== projectToDelete.id);
+    const handleDeleteProject = (project: Project) => {
+        if (!window.confirm(`คุณต้องการลบโปรเจค '${project.name}' หรือไม่?`)) return;
+
+        const updatedProjects = projects.filter(p => p.id !== project.id);
         setProjects(updatedProjects);
         
-        if (currentProjectId === projectToDelete.id) {
-            handleNewBlankProject(false); // Reset without confirmation
+        if (currentProjectId === project.id) {
+            handleNewBlankProject(false); 
         } else {
             saveProjectsToStore(updatedProjects, currentProjectId);
         }
-        setProjectToDelete(null);
-    };
-
-    const handleDeleteProject = (project: Project) => {
-        setProjectToDelete(project);
     };
 
     const handleNewBlankProject = (confirm = true) => {
@@ -1764,7 +1760,6 @@ const App: React.FC = () => {
                          </div>
                      </div>
                 </Modal>
-                <Modal isOpen={!!projectToDelete} onClose={() => setProjectToDelete(null)} title="ยืนยันการลบโปรเจค"><div><p className="text-gray-700 mb-4">คุณแน่ใจหรือไม่ว่าต้องการลบโปรเจค: <br/><strong className="font-semibold">{projectToDelete?.name}</strong>?<br/>การกระทำนี้ไม่สามารถย้อนกลับได้</p><div className="flex justify-end space-x-2"><button type="button" onClick={() => setProjectToDelete(null)} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">ยกเลิก</button><button type="button" onClick={handleConfirmDeleteProject} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">ยืนยันการลบ</button></div></div></Modal>
             </div>
         </>
     );
