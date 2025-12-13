@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { EquipmentItem, QuotationItem, Project, ProjectData, Job, InvestmentType, AssetType, ItemQuantities } from './types';
 import { INITIAL_EQUIPMENT_ITEMS, DEPARTMENTS, INVESTMENT_TYPES, ASSET_TYPES } from './constants';
@@ -206,7 +207,7 @@ const BreakdownModal: React.FC<{
     }, [isOpen]);
 
     const currentTotal = useMemo(() => {
-        return Object.values(subQuantities).reduce((sum, qty) => sum + (parseInt(qty, 10) || 0), 0);
+        return Object.values(subQuantities).reduce((sum, qty) => sum + (parseInt(qty as string, 10) || 0), 0);
     }, [subQuantities]);
 
     const handleQuantityChange = (itemId: string, value: string) => {
@@ -219,7 +220,7 @@ const BreakdownModal: React.FC<{
             return;
         }
         const finalQuantities = Object.entries(subQuantities).reduce((acc, [itemId, qtyStr]) => {
-            const qty = parseInt(qtyStr, 10);
+            const qty = parseInt(qtyStr as string, 10);
             if (!isNaN(qty) && qty > 0) {
                 acc[itemId] = qty;
             }
@@ -563,16 +564,17 @@ const App: React.FC = () => {
                         } else if (typeof quantityOrQuantities === 'object' && quantityOrQuantities !== null) {
                             // FIX: Safely construct ItemQuantities from potentially untyped object to avoid downstream errors.
                             const parsed: ItemQuantities = {};
-                            if (quantityOrQuantities.install != null) {
-                                const val = Number(quantityOrQuantities.install);
+                            const qtyObj = quantityOrQuantities as any;
+                            if (qtyObj.install != null) {
+                                const val = Number(qtyObj.install);
                                 if (!isNaN(val)) parsed.install = val;
                             }
-                            if (quantityOrQuantities.remove != null) {
-                                const val = Number(quantityOrQuantities.remove);
+                            if (qtyObj.remove != null) {
+                                const val = Number(qtyObj.remove);
                                 if (!isNaN(val)) parsed.remove = val;
                             }
-                            if (quantityOrQuantities.reuse != null) {
-                                const val = Number(quantityOrQuantities.reuse);
+                            if (qtyObj.reuse != null) {
+                                const val = Number(qtyObj.reuse);
                                 if (!isNaN(val)) parsed.reuse = val;
                             }
                             if (Object.keys(parsed).length > 0) {
